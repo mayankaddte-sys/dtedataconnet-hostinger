@@ -1,5 +1,5 @@
-const express = require('express');
-const { sendEmail } = require('../backend-lib/mailer');
+import express from 'express';
+import { sendEmail } from '../backend-lib/mailer.js';
 
 const router = express.Router();
 
@@ -22,4 +22,4 @@ router.post('/send-email', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
