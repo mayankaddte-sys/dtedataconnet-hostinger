@@ -1,0 +1,8 @@
+{
+  "name": "Remix Directorate of Training - Field Unit Data Portal",
+  "description": "Official institutional portal for Directorate of Training, Government of Uttar Pradesh (प्रशिक्षण निदेशालय, उ.प्र.) for desk-wise data collection from JD Offices and Govt ITIs with priority workflows and strict submission cutoffs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
