@@ -257,7 +257,89 @@ export const runAutomaticEmailReminderCycle = (
   };
 };
 
-// Dispatch manual bulk reminder to targeted pending units.
+// Dispatch "new requisition" notification emails to every field unit targeted
+// by a freshly created requisition. Called once, right after a desk creates
+// a new demand — separate from the 48h/24h/overdue reminder cycle above.
+export const dispatchNewRequisitionEmails = async (
+  req: Requisition,
+  fieldUnits: FieldUnit[],
+  senderDesk?: DirectorateDesk
+): Promise<{ success: boolean; sentCount: number; failedCount: number; logs: EmailDispatchLog[] }> => {
+  const settings = getAutoEmailSettings();
+  if (!settings.notifyOnNewRequisition) {
+    return { success: true, sentCount: 0, failedCount: 0, logs: [] };
+  }
+
+  const existingLogs = getStoredEmailLogs();
+  const senderEmail = senderDesk?.email || settings.senderEmail;
+  const senderDeskName = senderDesk?.name || req.deskName || 'प्रशिक्षण निदेशालय, उ.प्र.';
+
+  // Same target resolution used across the app (userScope.ts / the reminder cycle above):
+  // exact scope match first, then zones, then explicit unit id list.
+  const targetUnits = fieldUnits.filter((u) => {
+    if (req.targetScope === 'ALL_FIELD_UNITS') return true;
+    if (req.targetScope === 'ALL_JD_OFFICES') return u.type === 'JD_OFFICE';
+    if (req.targetScope === 'ALL_ITIS') return u.type === 'ITI';
+    if (req.targetZones && req.targetZones.length > 0 && req.targetZones.includes(u.zone)) return true;
+    if (req.targetUnitIds && req.targetUnitIds.length > 0) return req.targetUnitIds.includes(u.id);
+    return false;
+  });
+
+  const subject = `[नई मांग जारी] ${req.title} (${req.requisitionNumber})`;
+  const deadlineStr = new Date(req.deadline).toLocaleString('hi-IN', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  });
+  const message = `सादर, ${senderDeskName} द्वारा एक नई डेटा मांग जारी की गई है।\n\nविषय: ${req.title}\nसंदर्भ संख्या: ${req.requisitionNumber}\nअंतिम तिथि: ${deadlineStr}\n\nकृपया पोर्टल पर लॉगिन कर निर्धारित समय-सीमा में विवरण प्रस्तुत करें।`;
+
+  const results = await Promise.all(
+    targetUnits.map(async (unit) => {
+      const email = unit.email.includes('@') ? unit.email : `${unit.code.toLowerCase()}@vppup.in`;
+
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+          <h3 style="margin-bottom: 4px;">नई डेटा मांग / New Data Requisition</h3>
+          <p><strong>${req.title}</strong></p>
+          <p>संदर्भ संख्या: ${req.requisitionNumber}<br/>
+             अंतिम तिथि: ${deadlineStr}</p>
+          <p>${req.description || ''}</p>
+          <p style="font-size: 12px; color: #64748b;">प्रेषक: ${senderDeskName}</p>
+        </div>
+      `;
+
+      const emailResult = await sendReminderEmail({ to: email, subject, html, text: message });
+
+      const log: EmailDispatchLog = {
+        id: `new_req_${req.id}_${unit.id}`,
+        type: 'NEW_REQUISITION',
+        requisitionId: req.id,
+        requisitionNumber: req.requisitionNumber,
+        requisitionTitle: req.title,
+        recipientUnitId: unit.id,
+        recipientName: unit.name,
+        recipientEmail: email,
+        recipientType: unit.type,
+        recipientDistrict: unit.district,
+        senderDeskName,
+        senderEmail,
+        subject,
+        bodySnippet: message,
+        dispatchedAt: new Date().toISOString(),
+        status: emailResult.success ? 'DELIVERED' : 'FAILED',
+        error: emailResult.success ? undefined : emailResult.error
+      };
+      return log;
+    })
+  );
+
+  const combined = [...results, ...existingLogs].slice(0, 500);
+  saveStoredEmailLogs(combined);
+
+  const sentCount = results.filter((l) => l.status === 'DELIVERED').length;
+  const failedCount = results.filter((l) => l.status === 'FAILED').length;
+
+  return { success: failedCount === 0, sentCount, failedCount, logs: results };
+};
 // Now actually sends each email via the send-email edge function and
 // records the real per-recipient result instead of assuming success.
 export const dispatchManualEmailReminder = async (
