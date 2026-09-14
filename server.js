@@ -1,12 +1,16 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const apiKeyAuth = require('./backend-lib/apiKeyAuth');
-const genericRoutes = require('./routes/generic');
-const rpcRoutes = require('./routes/rpc');
-const functionRoutes = require('./routes/functions');
+import apiKeyAuth from './backend-lib/apiKeyAuth.js';
+import genericRoutes from './routes/generic.js';
+import rpcRoutes from './routes/rpc.js';
+import functionRoutes from './routes/functions.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
