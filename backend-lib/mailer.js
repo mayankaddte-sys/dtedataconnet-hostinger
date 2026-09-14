@@ -1,4 +1,4 @@
-const nodemailer = require('nodemailer');
+import nodemailer from 'nodemailer';
 
 let transporter = null;
 function getTransporter() {
@@ -16,7 +16,7 @@ function getTransporter() {
   return transporter;
 }
 
-async function sendEmail({ to, subject, html, text }) {
+export async function sendEmail({ to, subject, html, text }) {
   const info = await getTransporter().sendMail({
     from: process.env.FROM_EMAIL,
     to,
@@ -26,5 +26,3 @@ async function sendEmail({ to, subject, html, text }) {
   });
   return info;
 }
-
-module.exports = { sendEmail };
