@@ -1,4 +1,4 @@
-const mysql = require('mysql2/promise');
+import mysql from 'mysql2/promise';
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -12,4 +12,4 @@ const pool = mysql.createPool({
   dateStrings: true // keep DATETIME/DATE as plain strings, matching what the frontend already expects from Supabase (ISO-ish strings)
 });
 
-module.exports = pool;
+export default pool;
