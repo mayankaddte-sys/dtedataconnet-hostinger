@@ -1,6 +1,6 @@
-const express = require('express');
-const pool = require('../config/db');
-const TABLES = require('../backend-lib/tables');
+import express from 'express';
+import pool from '../config/db.js';
+import TABLES from '../backend-lib/tables.js';
 
 const router = express.Router();
 
@@ -141,4 +141,4 @@ router.delete('/:table', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
