@@ -7,10 +7,10 @@
 // ITI officer vs director). If you want row-level restrictions per role,
 // that needs real per-user auth (e.g. JWT issued at login) added on top of
 // this. Flagging this here so it isn't forgotten.
-module.exports = function apiKeyAuth(req, res, next) {
+export default function apiKeyAuth(req, res, next) {
   const key = req.header('x-api-key');
   if (!key || key !== process.env.API_KEY) {
     return res.status(401).json({ error: 'Missing or invalid API key' });
   }
   next();
-};
+}
