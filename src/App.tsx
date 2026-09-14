@@ -44,7 +44,7 @@ import { DirectoryView } from './components/views/DirectoryView';
 import { ChangePasswordModal } from './components/auth/ChangePasswordModal';
 import { AutoEmailMonitorModal } from './components/modals/AutoEmailMonitorModal';
 import { ReminderDispatchSuccessModal } from './components/modals/ReminderDispatchSuccessModal';
-import { runAutomaticEmailReminderCycle, dispatchManualEmailReminder, EmailDispatchLog } from './lib/emailReminderEngine';
+import { runAutomaticEmailReminderCycle, dispatchManualEmailReminder, dispatchNewRequisitionEmails, EmailDispatchLog } from './lib/emailReminderEngine';
 
 export default function App() {
   // Data state — starts empty, populated by the effect below.
@@ -225,6 +225,15 @@ export default function App() {
     setRequisitions(updated);
     setSelectedRequisition(newReq);
     setActiveMenu('REQUISITIONS');
+
+    // Fire-and-forget: notify every targeted field unit by email that a new
+    // demand has been issued. Doesn't block the UI on email delivery.
+    const senderDesk = desks.find(d => d.id === newReq.deskId);
+    dispatchNewRequisitionEmails(newReq, fieldUnits, senderDesk).then(result => {
+      if (result.failedCount > 0) {
+        console.error(`New requisition email: ${result.failedCount} of ${result.sentCount + result.failedCount} failed to send`);
+      }
+    }).catch(e => console.error('Failed to dispatch new requisition emails', e));
   };
 
   const handleUpdateSubmissionStatus = (
