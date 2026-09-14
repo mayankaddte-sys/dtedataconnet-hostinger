@@ -12,7 +12,7 @@
  *   1. Put your exported *_rows.sql files in backend/seed/raw/
  *      (same filenames Supabase's table editor exports, e.g.
  *      requisitions_rows.sql, field_units_rows.sql, etc.)
- *   2. node seed/convert-supabase-dump.js
+ *   2. node seed/convert-supabase-dump.cjs
  *   3. Converted files land in backend/seed/converted/
  *      Import these into phpMyAdmin AFTER schema.sql, in this order:
  *        directorate_desks -> field_units -> app_credentials
