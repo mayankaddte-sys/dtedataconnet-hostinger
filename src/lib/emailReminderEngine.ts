@@ -83,34 +83,44 @@ export const saveStoredEmailLogs = (logs: EmailDispatchLog[]) => {
   }
 };
 
-// Actually send one email via the Supabase Edge Function (Gmail SMTP backend).
-async function sendReminderEmail(params: {
+interface OutgoingEmail {
   to: string;
   subject: string;
   html: string;
   text: string;
-}): Promise<{ success: boolean; error?: string }> {
+}
+
+// Send a whole batch of emails in ONE request instead of one fetch per
+// recipient. Previously each caller did Promise.all(units.map(fetch)),
+// which meant 286 simultaneous HTTP requests from the browser for a
+// single "Send Reminder Notice" click — that's what was triggering 403s
+// partway through the burst. Now the browser makes exactly one request;
+// the server (routes/functions.js: send-email-batch) fans the emails out
+// itself with bounded concurrency.
+async function sendReminderEmailBatch(
+  messages: OutgoingEmail[]
+): Promise<{ success: boolean; error?: string }[]> {
+  if (messages.length === 0) return [];
+
   try {
-    const { data, error } = await supabase.functions.invoke('send-email', {
-      body: {
-        to: params.to,
-        subject: params.subject,
-        html: params.html,
-        text: params.text
-      }
+    const { data, error } = await supabase.functions.invoke('send-email-batch', {
+      body: { messages }
     });
     if (error) {
-      console.error('Reminder email send failed', error);
-      return { success: false, error: error.message || 'Failed to send email.' };
+      console.error('Batch reminder email send failed', error);
+      // Whole request failed (e.g. network/auth) — report every message
+      // in the batch as failed rather than silently dropping them.
+      return messages.map(() => ({ success: false, error: error.message || 'Failed to send email.' }));
     }
-    if (data?.error) {
-      console.error('Reminder email send failed', data.error);
-      return { success: false, error: data.error };
+    const results = data?.results;
+    if (!Array.isArray(results) || results.length !== messages.length) {
+      console.error('Unexpected batch send-email response shape', data);
+      return messages.map(() => ({ success: false, error: 'Unexpected response from email service.' }));
     }
-    return { success: true };
+    return results.map((r: any) => ({ success: !!r?.success, error: r?.error }));
   } catch (err) {
-    console.error('Reminder email send failed', err);
-    return { success: false, error: 'Could not reach the email service.' };
+    console.error('Batch reminder email send failed', err);
+    return messages.map(() => ({ success: false, error: 'Could not reach the email service.' }));
   }
 }
 
@@ -303,11 +313,19 @@ export const dispatchNewRequisitionEmails = async (
   });
   const message = `सादर, ${senderDeskName} द्वारा एक नई डेटा मांग जारी की गई है।\n\nविषय: ${req.title}\nसंदर्भ संख्या: ${req.requisitionNumber}\nअंतिम तिथि: ${deadlineStr}\n\nकृपया पोर्टल पर लॉगिन कर निर्धारित समय-सीमा में विवरण प्रस्तुत करें।\n\nपोर्टल लिंक: ${PORTAL_URL}`;
 
-  const results = await Promise.all(
-    targetUnits.map(async (unit) => {
-      const email = unit.email.includes('@') ? unit.email : `${unit.code.toLowerCase()}@vppup.in`;
+  // Resolve each unit's email address once, up front, so the outgoing
+  // batch and the log entries stay in the same order and can be zipped
+  // back together by index after the single batch request resolves.
+  const recipients = targetUnits.map((unit) => ({
+    unit,
+    email: unit.email.includes('@') ? unit.email : `${unit.code.toLowerCase()}@vppup.in`
+  }));
 
-      const html = `
+  const outgoing: OutgoingEmail[] = recipients.map(({ email }) => ({
+    to: email,
+    subject,
+    text: message,
+    html: `
         <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
           <h3 style="margin-bottom: 4px;">नई डेटा मांग / New Data Requisition</h3>
           <p><strong>${req.title}</strong></p>
@@ -317,32 +335,33 @@ export const dispatchNewRequisitionEmails = async (
           <p><a href="${PORTAL_URL}" style="color: #2563eb;">पोर्टल पर जाएं / Visit Portal</a></p>
           <p style="font-size: 12px; color: #64748b;">प्रेषक: ${senderDeskName}</p>
         </div>
-      `;
+      `
+  }));
 
-      const emailResult = await sendReminderEmail({ to: email, subject, html, text: message });
+  const sendResults = await sendReminderEmailBatch(outgoing);
 
-      const log: EmailDispatchLog = {
-        id: `new_req_${req.id}_${unit.id}`,
-        type: 'NEW_REQUISITION',
-        requisitionId: req.id,
-        requisitionNumber: req.requisitionNumber,
-        requisitionTitle: req.title,
-        recipientUnitId: unit.id,
-        recipientName: unit.name,
-        recipientEmail: email,
-        recipientType: unit.type,
-        recipientDistrict: unit.district,
-        senderDeskName,
-        senderEmail,
-        subject,
-        bodySnippet: message,
-        dispatchedAt: new Date().toISOString(),
-        status: emailResult.success ? 'DELIVERED' : 'FAILED',
-        error: emailResult.success ? undefined : emailResult.error
-      };
-      return log;
-    })
-  );
+  const results: EmailDispatchLog[] = recipients.map(({ unit, email }, i) => {
+    const emailResult = sendResults[i] || { success: false, error: 'No result returned for this recipient.' };
+    return {
+      id: `new_req_${req.id}_${unit.id}`,
+      type: 'NEW_REQUISITION',
+      requisitionId: req.id,
+      requisitionNumber: req.requisitionNumber,
+      requisitionTitle: req.title,
+      recipientUnitId: unit.id,
+      recipientName: unit.name,
+      recipientEmail: email,
+      recipientType: unit.type,
+      recipientDistrict: unit.district,
+      senderDeskName,
+      senderEmail,
+      subject,
+      bodySnippet: message,
+      dispatchedAt: new Date().toISOString(),
+      status: emailResult.success ? 'DELIVERED' : 'FAILED',
+      error: emailResult.success ? undefined : emailResult.error
+    };
+  });
 
   const combined = [...results, ...existingLogs].slice(0, 500);
   saveStoredEmailLogs(combined);
@@ -368,48 +387,52 @@ export const dispatchManualEmailReminder = async (
   const subject = customSubject || `[अनुस्मारक] ${req.title} (${req.requisitionNumber}) - डेटा प्रेषण अनुरोध`;
   const message = customMessage || `सादर, निदेशालय पत्र संख्या ${req.requisitionNumber} के अंतर्गत डेटा अपलोड की अंतिम तिथि निकट है। कृपया समय से पोर्टल पर सबमिशन पूर्ण करें।\n\nपोर्टल लिंक: ${PORTAL_URL}`;
 
-  const results = await Promise.all(
-    pendingUnits.map(async (unit) => {
-      const email = unit.email.includes('@') ? unit.email : `${unit.code.toLowerCase()}@vppup.in`;
+  // Same batching approach as dispatchNewRequisitionEmails: resolve
+  // recipients up front, send everything in ONE request (this is the
+  // path "Send Reminder Notice" hits for all 286 pending ITIs at once),
+  // then zip the per-recipient results back into log entries by index.
+  const recipients = pendingUnits.map((unit) => ({
+    unit,
+    email: unit.email.includes('@') ? unit.email : `${unit.code.toLowerCase()}@vppup.in`
+  }));
 
-      const html = `
+  const outgoing: OutgoingEmail[] = recipients.map(({ email }) => ({
+    to: email,
+    subject,
+    text: message,
+    html: `
         <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
           <p>${message}</p>
           <p><a href="${PORTAL_URL}" style="color: #2563eb;">पोर्टल पर जाएं / Visit Portal</a></p>
           <p style="font-size: 12px; color: #64748b;">Reference: ${req.requisitionNumber} • ${senderDeskName}</p>
         </div>
-      `;
+      `
+  }));
 
-      const emailResult = await sendReminderEmail({
-        to: email,
-        subject,
-        html,
-        text: message
-      });
+  const sendResults = await sendReminderEmailBatch(outgoing);
 
-      const log: EmailDispatchLog = {
-        id: `manual_rem_${Date.now()}_${unit.id}`,
-        type: 'MANUAL_REMINDER',
-        requisitionId: req.id,
-        requisitionNumber: req.requisitionNumber,
-        requisitionTitle: req.title,
-        recipientUnitId: unit.id,
-        recipientName: unit.name,
-        recipientEmail: email,
-        recipientType: unit.type,
-        recipientDistrict: unit.district,
-        senderDeskName,
-        senderEmail,
-        subject,
-        bodySnippet: message,
-        dispatchedAt: new Date().toISOString(),
-        status: emailResult.success ? 'DELIVERED' : 'FAILED',
-        error: emailResult.success ? undefined : emailResult.error
-      };
-
-      return log;
-    })
-  );
+  const results: EmailDispatchLog[] = recipients.map(({ unit, email }, i) => {
+    const emailResult = sendResults[i] || { success: false, error: 'No result returned for this recipient.' };
+    return {
+      id: `manual_rem_${Date.now()}_${unit.id}`,
+      type: 'MANUAL_REMINDER',
+      requisitionId: req.id,
+      requisitionNumber: req.requisitionNumber,
+      requisitionTitle: req.title,
+      recipientUnitId: unit.id,
+      recipientName: unit.name,
+      recipientEmail: email,
+      recipientType: unit.type,
+      recipientDistrict: unit.district,
+      senderDeskName,
+      senderEmail,
+      subject,
+      bodySnippet: message,
+      dispatchedAt: new Date().toISOString(),
+      status: emailResult.success ? 'DELIVERED' : 'FAILED',
+      error: emailResult.success ? undefined : emailResult.error
+    };
+  });
 
   const combined = [...results, ...existingLogs].slice(0, 500);
   saveStoredEmailLogs(combined);
