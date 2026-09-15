@@ -69,6 +69,7 @@ router.post('/:table/upsert', async (req, res) => {
     return res.json({ data: [], error: null });
   }
 
+  const pk = TABLES[table].pk;
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -76,19 +77,40 @@ router.post('/:table/upsert', async (req, res) => {
     for (const rawRow of rows) {
       const row = serializeRow(table, rawRow);
       const columns = Object.keys(row);
-      const placeholders = columns.map(() => '?').join(', ');
       const values = columns.map((c) => row[c]);
-      const updateClause = columns
-        .filter((c) => c !== TABLES[table].pk)
-        .map((c) => `\`${c}\` = VALUES(\`${c}\`)`)
-        .join(', ');
 
-      const sql = `
-        INSERT INTO \`${table}\` (${columns.map((c) => `\`${c}\``).join(', ')})
-        VALUES (${placeholders})
-        ON DUPLICATE KEY UPDATE ${updateClause || columns[0] + ' = VALUES(' + columns[0] + ')'}
-      `;
-      await conn.query(sql, values);
+      // Decide insert-vs-update by looking the row up by PRIMARY KEY only.
+      // We used to do a single `INSERT ... ON DUPLICATE KEY UPDATE`, but
+      // MySQL fires that clause on a collision with *any* unique key on the
+      // table (e.g. requisitions.requisition_number), not just the pk we
+      // actually intend to match on. That let a coincidental collision on a
+      // different unique column silently overwrite an unrelated existing
+      // row's data while leaving that row's original id untouched - so the
+      // row the caller thought it just inserted never actually existed.
+      // Matching by pk here, and letting any other unique-constraint
+      // violation surface as a real error below, avoids that corruption.
+      const [existing] = await conn.query(
+        `SELECT 1 FROM \`${table}\` WHERE \`${pk}\` = ? LIMIT 1`,
+        [row[pk]]
+      );
+
+      if (existing.length > 0) {
+        const updateCols = columns.filter((c) => c !== pk);
+        if (updateCols.length > 0) {
+          const setClause = updateCols.map((c) => `\`${c}\` = ?`).join(', ');
+          const updateValues = updateCols.map((c) => row[c]);
+          await conn.query(
+            `UPDATE \`${table}\` SET ${setClause} WHERE \`${pk}\` = ?`,
+            [...updateValues, row[pk]]
+          );
+        }
+      } else {
+        const placeholders = columns.map(() => '?').join(', ');
+        await conn.query(
+          `INSERT INTO \`${table}\` (${columns.map((c) => `\`${c}\``).join(', ')}) VALUES (${placeholders})`,
+          values
+        );
+      }
     }
 
     await conn.commit();
@@ -96,7 +118,14 @@ router.post('/:table/upsert', async (req, res) => {
   } catch (err) {
     await conn.rollback();
     console.error(`UPSERT ${table} failed`, err);
-    res.status(500).json({ error: err.message });
+    // A genuine duplicate-key error now means a real conflict on a non-pk
+    // unique column (e.g. a reused requisition_number) rather than a
+    // silent cross-row overwrite - surface it clearly to the caller.
+    const message =
+      err.code === 'ER_DUP_ENTRY'
+        ? `Duplicate value for a unique field in "${table}": ${err.sqlMessage || err.message}`
+        : err.message;
+    res.status(500).json({ error: message });
   } finally {
     conn.release();
   }
