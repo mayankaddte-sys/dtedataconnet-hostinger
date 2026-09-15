@@ -735,6 +735,7 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
                     officerDesignation={officerDesignation}
                     onSaveSignature={(dataUrl) => setDigitalSignatureUrl(dataUrl)}
                     onClear={() => setDigitalSignatureUrl('')}
+                    required={signedLetterRequired}
                   />
 
                   {digitalSignatureUrl && (
