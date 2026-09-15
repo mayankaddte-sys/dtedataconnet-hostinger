@@ -8,6 +8,7 @@ import {
   DirectorateDesk,
   UserSession
 } from '../../types/portal';
+import { isForwardableByJd, getUnforwardedMandalItis } from '../../utils/userScope';
 import { PriorityBadge } from '../common/PriorityBadge';
 import { CountdownTimer } from '../common/CountdownTimer';
 import { StatusBadge } from '../common/StatusBadge';
@@ -40,7 +41,8 @@ import {
   ChevronRight,
   BarChart3,
   BookOpen,
-  FileText
+  FileText,
+  Share2
 } from 'lucide-react';
 
 interface FieldDashboardProps {
@@ -53,6 +55,7 @@ interface FieldDashboardProps {
   defaulterNotices: DefaulterNotice[];
   desks: DirectorateDesk[];
   onOpenSubmitModal: (req: Requisition, existingSub?: SubmissionRecord) => void;
+  onForwardToItis?: (requisitionId: string, unitIds: string[]) => void;
   onRequestExtension: (requisitionId: string, reason: string) => void;
   onSelectRequisition?: (req: Requisition) => void;
 }
@@ -67,6 +70,7 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
   defaulterNotices,
   desks,
   onOpenSubmitModal,
+  onForwardToItis,
   onRequestExtension,
   onSelectRequisition
 }) => {
@@ -75,6 +79,8 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedDistrict, setSelectedDistrict] = useState<string>('ALL');
   const [selectedItiForModal, setSelectedItiForModal] = useState<FieldUnit | null>(null);
+  const [forwardingRequisition, setForwardingRequisition] = useState<Requisition | null>(null);
+  const [selectedForwardUnitIds, setSelectedForwardUnitIds] = useState<string[]>([]);
   const [selectedSubForInspect, setSelectedSubForInspect] = useState<SubmissionRecord | null>(null);
 
   // Extension Modal
@@ -156,6 +162,36 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
     alert('समय-विस्तार अनुरोध निदेशालय प्रकोष्ठ को प्रेषित कर दिया गया है।');
     setSelectedReqForExtension(null);
     setExtensionReason('');
+  };
+
+  // Units still available to forward the currently-open requisition to
+  // (mandal ITIs not already targeted by it).
+  const forwardableUnits = forwardingRequisition
+    ? getUnforwardedMandalItis(forwardingRequisition, fieldUnit, allFieldUnits)
+    : [];
+
+  const openForwardModal = (req: Requisition) => {
+    setForwardingRequisition(req);
+    setSelectedForwardUnitIds([]);
+  };
+
+  const handleToggleForwardUnit = (unitId: string) => {
+    setSelectedForwardUnitIds(prev =>
+      prev.includes(unitId) ? prev.filter(id => id !== unitId) : [...prev, unitId]
+    );
+  };
+
+  const handleToggleForwardAll = () => {
+    setSelectedForwardUnitIds(prev =>
+      prev.length === forwardableUnits.length ? [] : forwardableUnits.map(u => u.id)
+    );
+  };
+
+  const handleConfirmForward = () => {
+    if (!forwardingRequisition || selectedForwardUnitIds.length === 0 || !onForwardToItis) return;
+    onForwardToItis(forwardingRequisition.id, selectedForwardUnitIds);
+    setForwardingRequisition(null);
+    setSelectedForwardUnitIds([]);
   };
 
   return (
@@ -580,6 +616,22 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
                     <CountdownTimer deadline={req.deadline} isStrictCutoff={req.isStrictCutoff} />
 
                     <div className="flex items-center gap-2">
+                      {/* JD-only: relay this demand to mandal ITIs for compliance */}
+                      {isJD && onForwardToItis && isForwardableByJd(req, fieldUnit, allFieldUnits) && (
+                        <button
+                          onClick={() => openForwardModal(req)}
+                          className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                        >
+                          <Share2 className="w-3.5 h-3.5" />
+                          <span>मंडल की ITI को अग्रेषित करें</span>
+                        </button>
+                      )}
+                      {isJD && req.forwardLog && req.forwardLog.length > 0 && (
+                        <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                          {req.forwardLog.length} ITI को अग्रेषित
+                        </span>
+                      )}
+
                       {/* If pending or revision needed */}
                       {!sub || sub.status === 'REVISION_REQUESTED' ? (
                         <>
@@ -827,6 +879,88 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
                   className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold shadow-xs"
                 >
                   Send to {selectedReqForExtension.deskName}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Forward Requisition to Mandal ITIs Modal (JD only) */}
+      {forwardingRequisition && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-amber-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Share2 className="w-5 h-5" />
+                <h3 className="font-bold text-base">मंडल की ITI को अग्रेषित करें (Forward to ITIs)</h3>
+              </div>
+              <button onClick={() => setForwardingRequisition(null)} className="text-amber-100 hover:text-white">
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div>
+                <span className="font-bold text-slate-500 block text-[11px]">मांग आदेश (Demand Order):</span>
+                <div className="font-bold text-slate-900 mt-0.5">{forwardingRequisition.title}</div>
+                <div className="text-slate-500 font-mono">{forwardingRequisition.requisitionNumber}</div>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-[11px] leading-relaxed">
+                चयनित ITI संस्थान इस मांग आदेश को अपने डैशबोर्ड पर देख सकेंगे एवं सीधे अनुपालन डेटा प्रस्तुत कर सकेंगे। प्रत्येक चयनित संस्थान को ईमेल सूचना भी स्वतः प्रेषित की जाएगी।
+              </div>
+
+              {forwardableUnits.length === 0 ? (
+                <div className="p-4 text-center text-slate-500 text-xs">
+                  इस मांग आदेश हेतु मंडल की सभी ITI पहले ही अग्रेषित की जा चुकी हैं।
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700">
+                      ITI चुनें ({selectedForwardUnitIds.length} / {forwardableUnits.length} चयनित):
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleToggleForwardAll}
+                      className="text-[11px] font-bold text-indigo-600 hover:underline"
+                    >
+                      {selectedForwardUnitIds.length === forwardableUnits.length ? 'Clear All' : 'सभी चुनें (Select All)'}
+                    </button>
+                  </div>
+
+                  <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1.5 bg-slate-50">
+                    {forwardableUnits.map(unit => (
+                      <label key={unit.id} className="flex items-center gap-2 p-1.5 hover:bg-white rounded cursor-pointer text-xs">
+                        <input
+                          type="checkbox"
+                          checked={selectedForwardUnitIds.includes(unit.id)}
+                          onChange={() => handleToggleForwardUnit(unit.id)}
+                          className="rounded text-amber-600 focus:ring-amber-500"
+                        />
+                        <span className="font-semibold text-slate-800">{unit.name}</span>
+                        <span className="text-[10px] text-slate-500">({unit.district})</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2 border-t">
+                <button
+                  onClick={() => setForwardingRequisition(null)}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg font-semibold text-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmForward}
+                  disabled={selectedForwardUnitIds.length === 0}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-bold shadow-xs flex items-center gap-1.5"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>अग्रेषित करें ({selectedForwardUnitIds.length})</span>
                 </button>
               </div>
             </div>
