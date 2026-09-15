@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS requisitions (
     custom_fields                       JSON          DEFAULT NULL,
     google_sheet_config                 JSON          DEFAULT NULL,
     google_form_config                  JSON          DEFAULT NULL,
+    forward_log                         JSON          DEFAULT NULL,
     require_officer_declaration         TINYINT(1)    DEFAULT 0,
     require_official_seal_upload        TINYINT(1)    DEFAULT 0,
     attachment_notice_doc_url           VARCHAR(500)  DEFAULT NULL,
