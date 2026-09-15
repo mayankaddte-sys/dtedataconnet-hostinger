@@ -626,9 +626,9 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
                           <span>मंडल की ITI को अग्रेषित करें</span>
                         </button>
                       )}
-                      {isJD && req.forwardLog && req.forwardLog.filter(f => f.forwardedByJdId === currentFieldUnit.id).length > 0 && (
+                      {isJD && req.forwardLog && req.forwardLog.filter(f => f.forwardedByJdId === fieldUnit.id).length > 0 && (
                         <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-                          {req.forwardLog.filter(f => f.forwardedByJdId === currentFieldUnit.id).length} ITI को अग्रेषित
+                          {req.forwardLog.filter(f => f.forwardedByJdId === fieldUnit.id).length} ITI को अग्रेषित
                         </span>
                       )}
 
