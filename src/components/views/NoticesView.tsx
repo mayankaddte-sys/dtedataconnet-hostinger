@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DefaulterNotice, Requisition, FieldUnit, DirectorateDesk, UserSession, SubmissionRecord } from '../../types/portal';
 import { formatDateTime } from '../../utils/dateUtils';
-import { getScopedNotices, getUserZone, getCurrentUserFieldUnit } from '../../utils/userScope';
+import { getScopedNotices, getUserZone, getCurrentUserFieldUnit, getNonSubmittedTargetUnits } from '../../utils/userScope';
 import { runAutomaticEmailReminderCycle, getStoredEmailLogs } from '../../lib/emailReminderEngine';
 import { 
   BellRing, 
@@ -29,7 +29,7 @@ interface NoticesViewProps {
   desks: DirectorateDesk[];
   currentUser: UserSession;
   submissions?: SubmissionRecord[];
-  onSendDefaulterNotice?: (unitIds: string[], subject: string, message: string) => void;
+  onSendDefaulterNotice?: (unitIds: string[], subject: string, message: string, reqId?: string) => void;
   onOpenEmailMonitor?: () => void;
 }
 
@@ -53,6 +53,29 @@ export const NoticesView: React.FC<NoticesViewProps> = ({
   const [isDispatchingAuto, setIsDispatchingAuto] = useState(false);
 
   const emailLogs = getStoredEmailLogs();
+
+  const selectedNoticeReq = requisitions.find(r => r.id === selectedReqId);
+  const defaulterUnits = selectedNoticeReq
+    ? getNonSubmittedTargetUnits(selectedNoticeReq, submissions, fieldUnits)
+    : [];
+
+  // Requisitions often arrive asynchronously after first render, so the
+  // initial useState default (requisitions[0]?.id) can end up empty —
+  // backfill it once data is available.
+  useEffect(() => {
+    if (!selectedReqId && requisitions.length > 0) {
+      setSelectedReqId(requisitions[0].id);
+    }
+  }, [requisitions, selectedReqId]);
+
+  // Re-scope the selection to the newly-picked requisition's actual
+  // non-submitters whenever the requisition changes (or the modal opens).
+  useEffect(() => {
+    if (isCreateNoticeOpen) {
+      setSelectedUnits(defaulterUnits.map(u => u.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedReqId, isCreateNoticeOpen]);
 
   const isField = currentUser.role === 'FIELD_JD' || currentUser.role === 'FIELD_ITI';
   const isJD = currentUser.role === 'FIELD_JD';
@@ -89,17 +112,17 @@ export const NoticesView: React.FC<NoticesViewProps> = ({
     }
 
     if (onSendDefaulterNotice) {
-      onSendDefaulterNotice(selectedUnits, noticeSubject.trim(), noticeMessage.trim());
+      onSendDefaulterNotice(selectedUnits, noticeSubject.trim(), noticeMessage.trim(), selectedReqId);
       setIsCreateNoticeOpen(false);
       setSelectedUnits([]);
     }
   };
 
   const handleSelectAllUnits = () => {
-    if (selectedUnits.length === fieldUnits.length) {
+    if (selectedUnits.length === defaulterUnits.length) {
       setSelectedUnits([]);
     } else {
-      setSelectedUnits(fieldUnits.map(u => u.id));
+      setSelectedUnits(defaulterUnits.map(u => u.id));
     }
   };
 
@@ -359,37 +382,44 @@ export const NoticesView: React.FC<NoticesViewProps> = ({
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-bold text-slate-700">
-                    Select Defaulter Units ({selectedUnits.length} Selected):
+                    Select Defaulter Units ({selectedUnits.length} / {defaulterUnits.length} Selected):
                   </label>
                   <button
                     type="button"
                     onClick={handleSelectAllUnits}
-                    className="text-[11px] font-bold text-indigo-600 hover:underline"
+                    disabled={defaulterUnits.length === 0}
+                    className="text-[11px] font-bold text-indigo-600 hover:underline disabled:opacity-40 disabled:no-underline"
                   >
-                    {selectedUnits.length === fieldUnits.length ? 'Clear All' : 'Select All'}
+                    {selectedUnits.length === defaulterUnits.length ? 'Clear All' : 'Select All'}
                   </button>
                 </div>
 
-                <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1.5 bg-slate-50">
-                  {fieldUnits.map(unit => (
-                    <label key={unit.id} className="flex items-center gap-2 p-1.5 hover:bg-white rounded cursor-pointer text-xs">
-                      <input
-                        type="checkbox"
-                        checked={selectedUnits.includes(unit.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedUnits([...selectedUnits, unit.id]);
-                          } else {
-                            setSelectedUnits(selectedUnits.filter(id => id !== unit.id));
-                          }
-                        }}
-                        className="rounded text-rose-600 focus:ring-rose-500"
-                      />
-                      <span className="font-semibold text-slate-800">{unit.name}</span>
-                      <span className="text-[10px] text-slate-500">({unit.district})</span>
-                    </label>
-                  ))}
-                </div>
+                {defaulterUnits.length === 0 ? (
+                  <div className="p-4 text-center text-slate-500 text-xs border border-slate-200 rounded-lg bg-slate-50">
+                    इस मांग आदेश हेतु सभी लक्षित इकाइयों ने डेटा प्रस्तुत कर दिया है — कोई डिफॉल्टर नहीं है।
+                  </div>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1.5 bg-slate-50">
+                    {defaulterUnits.map(unit => (
+                      <label key={unit.id} className="flex items-center gap-2 p-1.5 hover:bg-white rounded cursor-pointer text-xs">
+                        <input
+                          type="checkbox"
+                          checked={selectedUnits.includes(unit.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedUnits([...selectedUnits, unit.id]);
+                            } else {
+                              setSelectedUnits(selectedUnits.filter(id => id !== unit.id));
+                            }
+                          }}
+                          className="rounded text-rose-600 focus:ring-rose-500"
+                        />
+                        <span className="font-semibold text-slate-800">{unit.name}</span>
+                        <span className="text-[10px] text-slate-500">({unit.district})</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Subject */}
