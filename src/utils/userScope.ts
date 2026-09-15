@@ -109,6 +109,62 @@ export function getMandalItiUnits(
 }
 
 /**
+ * True if a requisition was issued to this JD's office (not directly to any
+ * ITI in their mandal yet) and can therefore be relayed to mandal ITIs.
+ * Once at least one mandal ITI is already targeted (whether by the original
+ * directorate order or a previous forward), this returns false — there's
+ * nothing new to forward.
+ */
+export function isForwardableByJd(
+  requisition: Requisition,
+  jdUnit: FieldUnit,
+  fieldUnits: FieldUnit[]
+): boolean {
+  if (jdUnit.type !== 'JD_OFFICE') return false;
+  if (!requisition.targetUnitIds.includes(jdUnit.id)) return false;
+
+  const mandalItiIds = new Set(
+    fieldUnits.filter(u => u.zone === jdUnit.zone && u.type === 'ITI').map(u => u.id)
+  );
+  const alreadyTargetsAnyMandalIti = requisition.targetUnitIds.some(id => mandalItiIds.has(id));
+  return !alreadyTargetsAnyMandalIti;
+}
+
+/**
+ * Mandal ITIs not yet forwarded this specific requisition (i.e. not already
+ * in its targetUnitIds) — the selectable list for the "Forward to ITIs" modal.
+ */
+export function getUnforwardedMandalItis(
+  requisition: Requisition,
+  jdUnit: FieldUnit,
+  fieldUnits: FieldUnit[]
+): FieldUnit[] {
+  return fieldUnits.filter(
+    u => u.zone === jdUnit.zone && u.type === 'ITI' && !requisition.targetUnitIds.includes(u.id)
+  );
+}
+
+/**
+ * Units targeted by a requisition that have NOT yet submitted (or whose
+ * submission was sent back for revision) — the actual "defaulters" for
+ * that specific demand. Used to scope bulk reminder notices to real
+ * non-submitters instead of every field unit statewide.
+ */
+export function getNonSubmittedTargetUnits(
+  requisition: Requisition,
+  submissions: SubmissionRecord[],
+  fieldUnits: FieldUnit[]
+): FieldUnit[] {
+  const targetIds = new Set(requisition.targetUnitIds);
+  const compliedIds = new Set(
+    submissions
+      .filter(s => s.requisitionId === requisition.id && s.status !== 'REVISION_REQUESTED')
+      .map(s => s.fieldUnitId)
+  );
+  return fieldUnits.filter(u => targetIds.has(u.id) && !compliedIds.has(u.id));
+}
+
+/**
  * Returns Requisitions visible to the user:
  * - No session: none
  * - DIRECTORATE_ADMIN: All requisitions
