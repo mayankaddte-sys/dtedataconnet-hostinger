@@ -149,7 +149,10 @@ export default function App() {
   useEffect(() => {
     if (!isDataLoaded) return;
     if (!didMountRequisitions.current) { didMountRequisitions.current = true; return; }
-    saveRequisitions(requisitions).catch(e => console.error(e));
+    saveRequisitions(requisitions).catch(e => {
+      console.error(e);
+      alert('मांग सहेजने में समस्या हुई। कृपया पुनः प्रयास करें अथवा मांग संख्या बदलें।');
+    });
   }, [requisitions, isDataLoaded]);
 
   const didMountSubmissions = useRef(false);
