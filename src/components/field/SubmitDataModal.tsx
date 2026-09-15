@@ -55,6 +55,12 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Whether the directorate marked a signed letter / digital signature as
+  // mandatory for this specific requisition. Defaults to false (optional)
+  // when the requisition predates this flag, so older requisitions aren't
+  // retroactively made stricter than they were when issued.
+  const signedLetterRequired = Boolean(requisition.requiresSignedLetter);
+
   // Form State
   const [formData, setFormData] = useState<FieldSubmissionData>(() => {
     return existingSubmission?.data || {};
@@ -209,7 +215,10 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
       return;
     }
 
-    if (!digitalSignatureUrl && !uploadedFileName && !existingSubmission) {
+    // Signature / signed-letter is only mandatory when the directorate
+    // explicitly asked for one on this requisition (requiresSignedLetter).
+    // If the desk didn't request it, field units may submit without either.
+    if (signedLetterRequired && !digitalSignatureUrl && !uploadedFileName && !existingSubmission) {
       alert('कृपया सबमिशन पूर्ण करने हेतु डिजिटल हस्ताक्षर (Digital Signature) करें अथवा हस्ताक्षरित शासकीय पत्र संलग्न करें।');
       return;
     }
@@ -219,16 +228,21 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
       return;
     }
 
-    let finalSignatureType: 'UPLOADED_DOCUMENT' | 'FINGER_DRAWN' | 'BOTH' = 'FINGER_DRAWN';
+    let finalSignatureType: 'UPLOADED_DOCUMENT' | 'FINGER_DRAWN' | 'BOTH' | undefined;
     if (digitalSignatureUrl && uploadedFileName) {
       finalSignatureType = 'BOTH';
     } else if (digitalSignatureUrl) {
       finalSignatureType = 'FINGER_DRAWN';
-    } else {
+    } else if (uploadedFileName) {
       finalSignatureType = 'UPLOADED_DOCUMENT';
+    } else {
+      // Neither a finger signature nor an uploaded letter was provided.
+      // Only reachable when signedLetterRequired is false (the mandatory
+      // check above would otherwise have blocked submission).
+      finalSignatureType = undefined;
     }
 
-    const finalDocName = uploadedFileName || (digitalSignatureUrl ? `${fieldUnit.code}_Digital_Sign_Report.pdf` : `${fieldUnit.code}_Signed_Letter.pdf`);
+    const finalDocName = uploadedFileName || (digitalSignatureUrl ? `${fieldUnit.code}_Digital_Sign_Report.pdf` : undefined);
 
     const payload: Partial<SubmissionRecord> = {
       id: existingSubmission?.id || `sub-${Date.now()}-${fieldUnit.id}`,
@@ -249,7 +263,7 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
       googleSheetSubmittedUrl: googleSheetSubmittedUrl.trim() || undefined,
       googleFormResponseId: googleFormResponseId.trim() || undefined,
       uploadedDocumentName: finalDocName,
-      uploadedDocumentUrl: uploadedFileUrl || digitalSignatureUrl || '#',
+      uploadedDocumentUrl: uploadedFileUrl || digitalSignatureUrl || undefined,
       signedLetterDispatchNumber: dispatchNumber.trim() || undefined,
       signedLetterDate: dispatchDate || undefined,
       digitalSignatureDataUrl: digitalSignatureUrl || undefined,
@@ -627,6 +641,15 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
                   <h3 className="text-xs uppercase tracking-wider font-extrabold">
                     Official Verification & Digital Authentication (शासकीय प्रमाणीकरण)
                   </h3>
+                  {signedLetterRequired ? (
+                    <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">
+                      अनिवार्य / Required
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+                      वैकल्पिक / Optional
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"
