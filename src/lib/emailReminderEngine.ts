@@ -263,7 +263,14 @@ export const runAutomaticEmailReminderCycle = (
 export const dispatchNewRequisitionEmails = async (
   req: Requisition,
   fieldUnits: FieldUnit[],
-  senderDesk?: DirectorateDesk
+  senderDesk?: DirectorateDesk,
+  // When set, email exactly these units instead of re-deriving targets from
+  // req.targetScope. Needed when a JD forwards to specific ITIs: the
+  // requisition's targetScope often stays 'ALL_JD_OFFICES' even after ITI
+  // ids are added to targetUnitIds, which would otherwise cause the
+  // scope-based filter below to wrongly exclude those ITIs (an ITI doesn't
+  // match "type === JD_OFFICE").
+  explicitTargetUnits?: FieldUnit[]
 ): Promise<{ success: boolean; sentCount: number; failedCount: number; logs: EmailDispatchLog[] }> => {
   const settings = getAutoEmailSettings();
   if (!settings.notifyOnNewRequisition) {
@@ -276,7 +283,7 @@ export const dispatchNewRequisitionEmails = async (
 
   // Same target resolution used across the app (userScope.ts / the reminder cycle above):
   // exact scope match first, then zones, then explicit unit id list.
-  const targetUnits = fieldUnits.filter((u) => {
+  const targetUnits = explicitTargetUnits ?? fieldUnits.filter((u) => {
     if (req.targetScope === 'ALL_FIELD_UNITS') return true;
     if (req.targetScope === 'ALL_JD_OFFICES') return u.type === 'JD_OFFICE';
     if (req.targetScope === 'ALL_ITIS') return u.type === 'ITI';
