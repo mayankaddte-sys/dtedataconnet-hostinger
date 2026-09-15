@@ -3,6 +3,10 @@
 import { Requisition, FieldUnit, DirectorateDesk, SubmissionRecord } from '../types/portal';
 import { apiClient as supabase } from './apiClient';
 
+// Base URL of the public compliance portal. Included in every outgoing
+// email so recipients always have a direct link back to the site.
+const PORTAL_URL = 'https://compliance-dteup.in';
+
 export interface EmailDispatchLog {
   id: string;
   type: 'NEW_REQUISITION' | 'AUTO_REMINDER_48H' | 'AUTO_REMINDER_24H' | 'OVERDUE_ALERT' | 'DEFAULTER_NOTICE' | 'MANUAL_REMINDER';
@@ -178,7 +182,7 @@ export const runAutomaticEmailReminderCycle = (
             senderDeskName,
             senderEmail,
             subject: `[48 घंटे शेष - रिमाइंडर] ${req.title} (${req.requisitionNumber})`,
-            bodySnippet: `महोदय, संदर्भ पत्र सं. ${req.requisitionNumber} के क्रम में डेटा/सूचना प्रेषण की अंतिम तिथि ${new Date(req.deadline).toLocaleDateString('hi-IN')} है। कृपया समय-सीमा में पोर्टल पर विवरण अपलोड करें।`,
+            bodySnippet: `महोदय, संदर्भ पत्र सं. ${req.requisitionNumber} के क्रम में डेटा/सूचना प्रेषण की अंतिम तिथि ${new Date(req.deadline).toLocaleDateString('hi-IN')} है। कृपया समय-सीमा में पोर्टल पर विवरण अपलोड करें।\n\nपोर्टल लिंक: ${PORTAL_URL}`,
             dispatchedAt: new Date().toISOString(),
             status: 'DELIVERED',
             hoursRemaining: Math.round(diffHours)
@@ -207,7 +211,7 @@ export const runAutomaticEmailReminderCycle = (
             senderDeskName,
             senderEmail,
             subject: `[अति-महत्वपूर्ण 24 घंटे शेष] समय-सीमा अनुपालन रिमाइंडर: ${req.title}`,
-            bodySnippet: `अति-आवश्यक: डेटा संकलन पत्र संख्या ${req.requisitionNumber} हेतु केवल ${Math.max(1, Math.round(diffHours))} घंटे शेष हैं। कट-ऑफ लागू होने से पूर्व पोर्टल पर डेटा सबमिट करें।`,
+            bodySnippet: `अति-आवश्यक: डेटा संकलन पत्र संख्या ${req.requisitionNumber} हेतु केवल ${Math.max(1, Math.round(diffHours))} घंटे शेष हैं। कट-ऑफ लागू होने से पूर्व पोर्टल पर डेटा सबमिट करें।\n\nपोर्टल लिंक: ${PORTAL_URL}`,
             dispatchedAt: new Date().toISOString(),
             status: 'DELIVERED',
             hoursRemaining: Math.round(diffHours)
@@ -236,7 +240,7 @@ export const runAutomaticEmailReminderCycle = (
             senderDeskName,
             senderEmail,
             subject: `[डिफाल्टर चेतावनी] समय-सीमा समाप्त - तत्काल डेटा प्रेषण नोटिस (${req.requisitionNumber})`,
-            bodySnippet: `चेतावनी: पत्र सं. ${req.requisitionNumber} हेतु निर्धारित समय-सीमा समाप्त हो चुकी है। आपकी इकाई द्वारा अभी तक अनुपालन नहीं किया गया है।`,
+            bodySnippet: `चेतावनी: पत्र सं. ${req.requisitionNumber} हेतु निर्धारित समय-सीमा समाप्त हो चुकी है। आपकी इकाई द्वारा अभी तक अनुपालन नहीं किया गया है।\n\nपोर्टल लिंक: ${PORTAL_URL}`,
             dispatchedAt: new Date().toISOString(),
             status: 'DELIVERED',
             hoursRemaining: 0
@@ -297,7 +301,7 @@ export const dispatchNewRequisitionEmails = async (
     dateStyle: 'medium',
     timeStyle: 'short'
   });
-  const message = `सादर, ${senderDeskName} द्वारा एक नई डेटा मांग जारी की गई है।\n\nविषय: ${req.title}\nसंदर्भ संख्या: ${req.requisitionNumber}\nअंतिम तिथि: ${deadlineStr}\n\nकृपया पोर्टल पर लॉगिन कर निर्धारित समय-सीमा में विवरण प्रस्तुत करें।`;
+  const message = `सादर, ${senderDeskName} द्वारा एक नई डेटा मांग जारी की गई है।\n\nविषय: ${req.title}\nसंदर्भ संख्या: ${req.requisitionNumber}\nअंतिम तिथि: ${deadlineStr}\n\nकृपया पोर्टल पर लॉगिन कर निर्धारित समय-सीमा में विवरण प्रस्तुत करें।\n\nपोर्टल लिंक: ${PORTAL_URL}`;
 
   const results = await Promise.all(
     targetUnits.map(async (unit) => {
@@ -310,6 +314,7 @@ export const dispatchNewRequisitionEmails = async (
           <p>संदर्भ संख्या: ${req.requisitionNumber}<br/>
              अंतिम तिथि: ${deadlineStr}</p>
           <p>${req.description || ''}</p>
+          <p><a href="${PORTAL_URL}" style="color: #2563eb;">पोर्टल पर जाएं / Visit Portal</a></p>
           <p style="font-size: 12px; color: #64748b;">प्रेषक: ${senderDeskName}</p>
         </div>
       `;
@@ -361,7 +366,7 @@ export const dispatchManualEmailReminder = async (
   const senderDeskName = senderDesk?.name || req.deskName || 'प्रशिक्षण निदेशालय, उ.प्र.';
 
   const subject = customSubject || `[अनुस्मारक] ${req.title} (${req.requisitionNumber}) - डेटा प्रेषण अनुरोध`;
-  const message = customMessage || `सादर, निदेशालय पत्र संख्या ${req.requisitionNumber} के अंतर्गत डेटा अपलोड की अंतिम तिथि निकट है। कृपया समय से पोर्टल पर सबमिशन पूर्ण करें।`;
+  const message = customMessage || `सादर, निदेशालय पत्र संख्या ${req.requisitionNumber} के अंतर्गत डेटा अपलोड की अंतिम तिथि निकट है। कृपया समय से पोर्टल पर सबमिशन पूर्ण करें।\n\nपोर्टल लिंक: ${PORTAL_URL}`;
 
   const results = await Promise.all(
     pendingUnits.map(async (unit) => {
@@ -370,6 +375,7 @@ export const dispatchManualEmailReminder = async (
       const html = `
         <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
           <p>${message}</p>
+          <p><a href="${PORTAL_URL}" style="color: #2563eb;">पोर्टल पर जाएं / Visit Portal</a></p>
           <p style="font-size: 12px; color: #64748b;">Reference: ${req.requisitionNumber} • ${senderDeskName}</p>
         </div>
       `;
