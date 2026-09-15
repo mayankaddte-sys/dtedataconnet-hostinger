@@ -22,7 +22,6 @@ import {
   saveDefaulterNotices, 
   getStoredUser, 
   saveCurrentUser, 
-  resetToInitialData,
   deleteRequisition,
   deleteSubmission
 } from './lib/storage';
@@ -277,7 +276,7 @@ export default function App() {
     setSubmissions(updated);
   };
 
-  const handleSendDefaulterNotice = (unitIds: string[], subject: string, message: string, reqId?: string) => {
+  const handleSendDefaulterNotice = async (unitIds: string[], subject: string, message: string, reqId?: string) => {
     const targetReq = requisitions.find(r => r.id === (reqId || selectedRequisition?.id)) || requisitions[0];
     const targetDesk = desks.find(d => d.id === targetReq?.deskId);
 
@@ -296,7 +295,7 @@ export default function App() {
     // Automatically send reminder emails to target units (@vppup.in)
     const targetUnits = fieldUnits.filter(u => unitIds.includes(u.id));
     if (targetReq && targetUnits.length > 0) {
-      const emailResult = dispatchManualEmailReminder(targetReq, targetUnits, subject, message, targetDesk);
+      const emailResult = await dispatchManualEmailReminder(targetReq, targetUnits, subject, message, targetDesk);
       
       // Update autoRemindersSent count on requisition
       const updatedReqs = requisitions.map(r => {
@@ -400,11 +399,6 @@ export default function App() {
     );
   };
 
-  const handleResetData = async () => {
-    await resetToInitialData();
-    window.location.reload();
-  };
-
   if (!isDataLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100">
@@ -433,7 +427,6 @@ export default function App() {
           onOpenChangePassword={() => setIsChangePasswordModalOpen(true)}
           onOpenEmailMonitor={() => setIsEmailMonitorOpen(true)}
           onCreateRequisition={() => {}}
-          onResetData={handleResetData}
           activeRequisitions={[]}
           urgentCount={0}
           extensions={[]}
@@ -507,7 +500,6 @@ export default function App() {
         onOpenChangePassword={() => setIsChangePasswordModalOpen(true)}
         onOpenEmailMonitor={() => setIsEmailMonitorOpen(true)}
         onCreateRequisition={() => setIsCreateReqModalOpen(true)}
-        onResetData={handleResetData}
         activeRequisitions={requisitions}
         urgentCount={urgentCount}
         extensions={extensions}
