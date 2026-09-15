@@ -1,6 +1,6 @@
 // Describes each table's primary key + which columns are JSON type, so the
 // generic route handlers know how to (de)serialize values correctly.
-module.exports = {
+export default {
   directorate_desks: { pk: 'id', json: [] },
   field_units: { pk: 'id', json: [] },
   app_credentials: { pk: 'identifier', json: [] },
