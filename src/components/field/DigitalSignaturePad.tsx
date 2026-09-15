@@ -16,6 +16,11 @@ interface DigitalSignaturePadProps {
   officerDesignation: string;
   onSaveSignature: (dataUrl: string) => void;
   onClear?: () => void;
+  // Whether a signature is actually mandatory for this requisition. Purely
+  // cosmetic — it only changes the helper label below the canvas — since
+  // the real enforcement lives in the parent's submit validation
+  // (requisition.requireOfficialSealUpload).
+  required?: boolean;
 }
 
 interface Point {
@@ -28,7 +33,8 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
   officerName,
   officerDesignation,
   onSaveSignature,
-  onClear
+  onClear,
+  required = false
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -369,9 +375,13 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
               <span>Digital Signature Captured (हस्ताक्षर संलग्न)</span>
             </span>
-          ) : (
+          ) : required ? (
             <span className="text-[11px] text-amber-700 font-medium bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
               * उंगली से हस्ताक्षर करना आवश्यक है
+            </span>
+          ) : (
+            <span className="text-[11px] text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+              हस्ताक्षर वैकल्पिक है (Signature optional for this requisition)
             </span>
           )}
         </div>
