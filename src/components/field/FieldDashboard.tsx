@@ -375,6 +375,17 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
                     const itiSubs = submissions.filter(s => s.fieldUnitId === iti.id);
                     const approvedSubs = itiSubs.filter(s => s.status === 'APPROVED').length;
 
+                    // Pending = active requisitions targeting this ITI that
+                    // either have no submission yet, or were sent back for
+                    // revision. This is what makes a report "still owed" by
+                    // the ITI, as opposed to already SUBMITTED/UNDER_REVIEW/
+                    // APPROVED (those aren't pending on the ITI anymore).
+                    const pendingReqs = requisitions.filter(r => {
+                      if (r.status !== 'ACTIVE' || !r.targetUnitIds.includes(iti.id)) return false;
+                      const sub = itiSubs.find(s => s.requisitionId === r.id);
+                      return !sub || sub.status === 'REVISION_REQUESTED';
+                    });
+
                     return (
                       <tr key={iti.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-4 py-3">
@@ -397,9 +408,18 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
                           <div className="text-slate-500 text-[11px]">{iti.email}</div>
                         </td>
                         <td className="px-3 py-3 text-center">
-                          <span className="bg-emerald-50 text-emerald-800 font-bold px-2.5 py-1 rounded-full border border-emerald-200">
-                            {itiSubs.length} Submissions ({approvedSubs} Approved)
-                          </span>
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="bg-emerald-50 text-emerald-800 font-bold px-2.5 py-1 rounded-full border border-emerald-200">
+                              {itiSubs.length} Submissions ({approvedSubs} Approved)
+                            </span>
+                            {pendingReqs.length > 0 ? (
+                              <span className="bg-amber-50 text-amber-800 font-bold px-2.5 py-1 rounded-full border border-amber-200 text-[11px]">
+                                {pendingReqs.length} Pending
+                              </span>
+                            ) : (
+                              <span className="text-emerald-600 text-[11px] font-semibold">कोई लंबित नहीं</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <button
