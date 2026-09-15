@@ -175,8 +175,14 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
     setSelectedDeskId(deskId);
     const desk = desks.find(d => d.id === deskId);
     if (desk) {
-      const rand = Math.floor(100 + Math.random() * 900);
-      setRequisitionNumber(`${desk.code}/${new Date().getFullYear()}/08-${rand}`);
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const tiebreaker = Math.floor(10 + Math.random() * 90);
+      setRequisitionNumber(`${desk.code}/${now.getFullYear()}/${month}${day}-${hh}${mm}${ss}${tiebreaker}`);
     }
   };
 
