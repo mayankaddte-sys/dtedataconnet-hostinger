@@ -68,8 +68,10 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   const [resetEmailInput, setResetEmailInput] = useState('');
   const [emailStep, setEmailStep] = useState<'REQUEST' | 'VERIFY_OTP' | 'SET_NEW_PASSWORD'>('REQUEST');
   const [enteredOtp, setEnteredOtp] = useState('');
+  // NOTE: the OTP value is deliberately NOT stored here. It is only sent to the
+  // user's registered inbox and verified server-side, so it never has to exist
+  // in component state or be rendered anywhere in the UI.
   const [otpGeneratedInfo, setOtpGeneratedInfo] = useState<{
-    otp: string;
     expiresMinutes: number;
     email: string;
     userCode: string;
@@ -213,7 +215,6 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       const res = await requestEmailPasswordReset(matched.email, matched.code, matched.displayName);
       if (res.success) {
         setOtpGeneratedInfo({
-          otp: res.otp,
           expiresMinutes: res.expiresMinutes,
           email: matched.email,
           userCode: matched.code,
@@ -586,30 +587,28 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
               {emailStep === 'VERIFY_OTP' && (
                 <form onSubmit={handleVerifyEmailOtp} className="space-y-4">
                   
-                  {/* Simulated Mail Delivery Notification Banner */}
+                  {/* Mail dispatch notice — the OTP itself is never shown on screen,
+                      it is only delivered to the registered @vppup.in inbox. */}
                   {otpGeneratedInfo && (
-                    <div className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-300 shadow-xs space-y-2">
+                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 shadow-xs space-y-2">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-amber-950 flex items-center gap-1.5">
-                          <Inbox className="w-4 h-4 text-amber-700" />
-                          <span>ईमेल इनबॉक्स सिम्युलेशन (@vppup.in Gateway)</span>
+                        <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                          <Inbox className="w-4 h-4 text-slate-600" />
+                          <span>ईमेल प्रेषित (@vppup.in)</span>
                         </span>
-                        <span className="text-[10px] font-mono font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded">
-                          वैधता: 15 मिनट
+                        <span className="text-[10px] font-mono font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded">
+                          वैधता: {otpGeneratedInfo.expiresMinutes} मिनट
                         </span>
                       </div>
-                      <div className="bg-white p-3 rounded-lg border border-amber-200 text-xs space-y-1">
+                      <div className="bg-white p-3 rounded-lg border border-slate-200 text-xs space-y-1">
                         <div className="text-[11px] text-slate-500">
                           <strong>प्राप्तकर्ता:</strong> {otpGeneratedInfo.email} ({otpGeneratedInfo.userName})
                         </div>
                         <div className="text-slate-800 font-medium">
                           विषय: <strong>प्रशिक्षण निदेशालय पासवर्ड रीसेट सत्यापन OTP कोड</strong>
                         </div>
-                        <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
-                          <span className="text-[11px] text-slate-600">आपका 6-अंकीय पासवर्ड रीसेट सुरक्षा OTP:</span>
-                          <span className="text-base font-mono font-black text-indigo-700 tracking-widest bg-indigo-50 px-3 py-1 rounded border border-indigo-200">
-                            {otpGeneratedInfo.otp}
-                          </span>
+                        <div className="mt-2 pt-2 border-t border-slate-100 text-[11px] text-slate-600">
+                          कृपया अपने ईमेल इनबॉक्स (एवं स्पैम फ़ोल्डर) में प्राप्त 6-अंकीय सुरक्षा OTP देखें और नीचे दर्ज करें।
                         </div>
                       </div>
                     </div>
