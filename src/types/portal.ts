@@ -99,6 +99,14 @@ export type TargetScopeType =
   | 'SELECTED_ZONES' 
   | 'SPECIFIC_UNITS';
 
+export interface RequisitionForwardEntry {
+  unitId: string;
+  unitName: string;
+  forwardedByJdId: string;
+  forwardedByJdName: string;
+  forwardedAt: string; // ISO string
+}
+
 export interface Requisition {
   id: string;
   requisitionNumber: string; // e.g., "DTE/EXAM/2026/08-114"
@@ -122,6 +130,12 @@ export interface Requisition {
   targetZones?: string[];
   targetDistricts?: string[];
   targetUnitIds: string[]; // list of field unit IDs targeted
+
+  // Forwarding: when a requisition is issued to a JD office (not directly to
+  // ITIs), the JD can relay it to selected/all ITIs in their mandal. Every
+  // forward appends the newly-added unit IDs to targetUnitIds (so they show
+  // up via the existing targeting logic) and logs an entry here for audit.
+  forwardLog?: RequisitionForwardEntry[];
   
   // Configuration
   customFields?: CustomFieldDefinition[];
