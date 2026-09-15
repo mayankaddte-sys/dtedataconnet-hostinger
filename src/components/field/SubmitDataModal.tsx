@@ -56,10 +56,10 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Whether the directorate marked a signed letter / digital signature as
-  // mandatory for this specific requisition. Defaults to false (optional)
-  // when the requisition predates this flag, so older requisitions aren't
-  // retroactively made stricter than they were when issued.
-  const signedLetterRequired = Boolean(requisition.requiresSignedLetter);
+  // mandatory for this specific requisition. Uses the existing
+  // requireOfficialSealUpload flag on the Requisition type — if the desk
+  // didn't ask for a sealed/signed letter, it isn't mandatory here either.
+  const signedLetterRequired = Boolean(requisition.requireOfficialSealUpload);
 
   // Form State
   const [formData, setFormData] = useState<FieldSubmissionData>(() => {
