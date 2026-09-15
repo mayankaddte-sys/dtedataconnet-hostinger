@@ -13,7 +13,6 @@ import {
   GraduationCap, 
   Layers, 
   PlusCircle, 
-  RotateCcw, 
   AlertCircle, 
   ChevronDown, 
   LayoutDashboard, 
@@ -48,7 +47,6 @@ interface HeaderProps {
   onOpenChangePassword?: () => void;
   onOpenEmailMonitor?: () => void;
   onCreateRequisition?: () => void;
-  onResetData: () => void;
   activeRequisitions: Requisition[];
   urgentCount: number;
   extensions: ExtensionRequest[];
@@ -68,7 +66,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenChangePassword,
   onOpenEmailMonitor,
   onCreateRequisition,
-  onResetData,
   activeRequisitions,
   urgentCount,
   extensions,
@@ -349,19 +346,6 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Building2 className="w-3.5 h-3.5 text-amber-400" />
               <span className="hidden sm:inline">लॉगिन मेन्यू</span>
-            </button>
-
-            {/* Reset Data Shortcut */}
-            <button
-              onClick={() => {
-                if (window.confirm('क्या आप पोर्टल के सभी डेटा को प्रारंभिक स्थिति में रीसेट करना चाहते हैं?')) {
-                  onResetData();
-                }
-              }}
-              title="डेटा रीसेट करें"
-              className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg border border-slate-800 transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
             </button>
 
             {/* Mobile Menu Hamburger */}
