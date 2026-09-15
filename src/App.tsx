@@ -3,6 +3,7 @@ import {
   DirectorateDesk, 
   FieldUnit, 
   Requisition, 
+  RequisitionForwardEntry,
   SubmissionRecord, 
   ExtensionRequest, 
   DefaulterNotice, 
@@ -233,6 +234,52 @@ export default function App() {
         console.error(`New requisition email: ${result.failedCount} of ${result.sentCount + result.failedCount} failed to send`);
       }
     }).catch(e => console.error('Failed to dispatch new requisition emails', e));
+  };
+
+  // A JD office relays a requisition it received (targeted at the JD, not
+  // directly at ITIs) down to selected/all ITIs in its mandal. Adds those
+  // ITI ids to the SAME requisition's targetUnitIds — reusing all the
+  // existing visibility/submission plumbing rather than creating a
+  // duplicate child requisition — and logs who forwarded it and when.
+  const handleForwardRequisitionToItis = (requisitionId: string, unitIds: string[]) => {
+    if (currentUser?.role !== 'FIELD_JD' || !currentFieldUnit) return;
+
+    const req = requisitions.find(r => r.id === requisitionId);
+    if (!req) return;
+
+    const newUnitIds = unitIds.filter(id => !req.targetUnitIds.includes(id));
+    if (newUnitIds.length === 0) return;
+
+    const forwardedAt = new Date().toISOString();
+    const forwardEntries: RequisitionForwardEntry[] = newUnitIds.map(unitId => {
+      const unit = fieldUnits.find(u => u.id === unitId);
+      return {
+        unitId,
+        unitName: unit?.name || unitId,
+        forwardedByJdId: currentFieldUnit.id,
+        forwardedByJdName: currentFieldUnit.name,
+        forwardedAt
+      };
+    });
+
+    const updatedReq: Requisition = {
+      ...req,
+      targetUnitIds: [...req.targetUnitIds, ...newUnitIds],
+      forwardLog: [...(req.forwardLog || []), ...forwardEntries]
+    };
+
+    setRequisitions(requisitions.map(r => (r.id === requisitionId ? updatedReq : r)));
+    if (selectedRequisition?.id === requisitionId) {
+      setSelectedRequisition(updatedReq);
+    }
+
+    // Notify exactly the newly forwarded ITIs (not re-derived from scope —
+    // see the comment on dispatchNewRequisitionEmails for why that matters).
+    const newlyTargetedUnits = fieldUnits.filter(u => newUnitIds.includes(u.id));
+    const senderDesk = desks.find(d => d.id === updatedReq.deskId);
+    dispatchNewRequisitionEmails(updatedReq, fieldUnits, senderDesk, newlyTargetedUnits).catch(e =>
+      console.error('Failed to notify forwarded ITIs', e)
+    );
   };
 
   const handleUpdateSubmissionStatus = (
@@ -600,6 +647,7 @@ export default function App() {
                     }}
                     onRequestExtension={handleRequestExtensionFromField}
                     onSelectRequisition={setSelectedRequisition}
+                    onForwardToItis={handleForwardRequisitionToItis}
                   />
                 )}
               </>
