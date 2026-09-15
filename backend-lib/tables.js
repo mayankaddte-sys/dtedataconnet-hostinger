@@ -1,6 +1,6 @@
 // Describes each table's primary key + which columns are JSON type, so the
 // generic route handlers know how to (de)serialize values correctly.
-export default {
+module.exports = {
   directorate_desks: { pk: 'id', json: [] },
   field_units: { pk: 'id', json: [] },
   app_credentials: { pk: 'identifier', json: [] },
@@ -12,7 +12,8 @@ export default {
       'target_unit_ids',
       'custom_fields',
       'google_sheet_config',
-      'google_form_config'
+      'google_form_config',
+      'forward_log'
     ]
   },
   submissions: { pk: 'id', json: ['data'] },
