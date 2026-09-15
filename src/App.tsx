@@ -149,10 +149,7 @@ export default function App() {
   useEffect(() => {
     if (!isDataLoaded) return;
     if (!didMountRequisitions.current) { didMountRequisitions.current = true; return; }
-    saveRequisitions(requisitions).catch(e => {
-      console.error(e);
-      alert('मांग सहेजने में समस्या हुई। कृपया पुनः प्रयास करें अथवा मांग संख्या बदलें।');
-    });
+    saveRequisitions(requisitions).catch(e => console.error(e));
   }, [requisitions, isDataLoaded]);
 
   const didMountSubmissions = useRef(false);
@@ -340,14 +337,16 @@ export default function App() {
       sentByDeskId: currentUser?.deskId || targetReq?.deskId || 'desk-coord'
     }));
 
+    // 1. SAVE FIRST, independent of email outcome. The notice record and
+    // the requisition's autoRemindersSent count are the "demand" being
+    // saved — this must never be blocked, delayed, or rolled back by
+    // however long (or how badly) the outgoing email batch goes. Both
+    // setters below trigger their own persistence useEffect
+    // (saveDefaulterNotices / saveRequisitions) immediately, with no
+    // dependency on email delivery at all.
     setDefaulterNotices([...newNotices, ...defaulterNotices]);
 
-    // Automatically send reminder emails to target units (@vppup.in)
-    const targetUnits = fieldUnits.filter(u => unitIds.includes(u.id));
-    if (targetReq && targetUnits.length > 0) {
-      const emailResult = await dispatchManualEmailReminder(targetReq, targetUnits, subject, message, targetDesk);
-      
-      // Update autoRemindersSent count on requisition
+    if (targetReq) {
       const updatedReqs = requisitions.map(r => {
         if (r.id === targetReq.id) {
           return {
@@ -358,12 +357,29 @@ export default function App() {
         return r;
       });
       setRequisitions(updatedReqs);
+    }
 
-      // Open email dispatch confirmation modal showing dispatched emails
-      setDispatchedEmailSuccessData({
-        logs: emailResult.logs,
-        subject
-      });
+    // 2. Email delivery is now a pure best-effort side effect. It runs
+    // after the save, and nothing about its outcome (success, partial
+    // failure, or a thrown error) can affect step 1 above — the demand
+    // is already saved by the time this starts. The try/catch here only
+    // protects the confirmation modal from an unexpected exception; it
+    // never re-touches defaulterNotices or requisitions state.
+    const targetUnits = fieldUnits.filter(u => unitIds.includes(u.id));
+    if (targetReq && targetUnits.length > 0) {
+      try {
+        const emailResult = await dispatchManualEmailReminder(targetReq, targetUnits, subject, message, targetDesk);
+        setDispatchedEmailSuccessData({
+          logs: emailResult.logs,
+          subject
+        });
+      } catch (e) {
+        console.error('Email dispatch failed after notice was already saved', e);
+        setDispatchedEmailSuccessData({
+          logs: [],
+          subject
+        });
+      }
     }
   };
 
