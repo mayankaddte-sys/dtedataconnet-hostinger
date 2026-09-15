@@ -67,8 +67,13 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
   const [selectedDeskId, setSelectedDeskId] = useState<string>(initialDesk?.id || desks[0].id);
   const [requisitionNumber, setRequisitionNumber] = useState<string>(() => {
     const code = initialDesk?.code || 'DTE-DESK';
-    const rand = Math.floor(100 + Math.random() * 900);
-    return `${code}/${new Date().getFullYear()}/08-${rand}`;
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    const tiebreaker = Math.floor(10 + Math.random() * 90);
+    return `${code}/${now.getFullYear()}/${month}${String(now.getDate()).padStart(2, '0')}-${hh}${mm}${ss}${tiebreaker}`;
   });
   const [title, setTitle] = useState<string>('');
   const [description, setDescription] = useState<string>('');
