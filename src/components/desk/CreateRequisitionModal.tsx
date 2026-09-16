@@ -67,13 +67,8 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
   const [selectedDeskId, setSelectedDeskId] = useState<string>(initialDesk?.id || desks[0].id);
   const [requisitionNumber, setRequisitionNumber] = useState<string>(() => {
     const code = initialDesk?.code || 'DTE-DESK';
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
-    const ss = String(now.getSeconds()).padStart(2, '0');
-    const tiebreaker = Math.floor(10 + Math.random() * 90);
-    return `${code}/${now.getFullYear()}/${month}${String(now.getDate()).padStart(2, '0')}-${hh}${mm}${ss}${tiebreaker}`;
+    const rand = Math.floor(100 + Math.random() * 900);
+    return `${code}/${new Date().getFullYear()}/08-${rand}`;
   });
   const [title, setTitle] = useState<string>('');
   const [description, setDescription] = useState<string>('');
@@ -98,6 +93,13 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
   const [isOrderDragOver, setIsOrderDragOver] = useState<boolean>(false);
   const [previewingOrder, setPreviewingOrder] = useState<boolean>(false);
   const orderFileInputRef = useRef<HTMLInputElement>(null);
+
+  // CUSTOM_PERFORMA mode: blank template (PDF/Excel/Word) the desk uploads
+  // for ITIs to download, fill offline, and re-upload.
+  const [performaFileName, setPerformaFileName] = useState<string>('');
+  const [performaFileUrl, setPerformaFileUrl] = useState<string>('');
+  const [performaFileSize, setPerformaFileSize] = useState<number>(0);
+  const performaFileInputRef = useRef<HTMLInputElement>(null);
 
   // Target Scope - 5 Options
   const [targetScope, setTargetScope] = useState<TargetScopeType>('ALL_ITIS');
@@ -165,6 +167,16 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
     }
   ]);
 
+  // Raw text the person is typing into each dropdown/radio field's
+  // "options" input, kept separate from the parsed customFields[].options
+  // array. Without this, the input's displayed value was derived straight
+  // from options.join(', ') — and since a trailing comma always produces
+  // an empty last segment that gets filtered out, the comma vanished the
+  // instant it was typed (bug: "," never seemed to insert). Now the input
+  // always shows exactly what was typed, while the parsed array (used
+  // everywhere else — dropdown rendering, etc.) still updates live.
+  const [optionsDraft, setOptionsDraft] = useState<Record<string, string>>({});
+
   // Verification
   const [requireOfficerDeclaration, setRequireOfficerDeclaration] = useState<boolean>(true);
   const [requireOfficialSealUpload, setRequireOfficialSealUpload] = useState<boolean>(true);
@@ -175,14 +187,8 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
     setSelectedDeskId(deskId);
     const desk = desks.find(d => d.id === deskId);
     if (desk) {
-      const now = new Date();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const hh = String(now.getHours()).padStart(2, '0');
-      const mm = String(now.getMinutes()).padStart(2, '0');
-      const ss = String(now.getSeconds()).padStart(2, '0');
-      const tiebreaker = Math.floor(10 + Math.random() * 90);
-      setRequisitionNumber(`${desk.code}/${now.getFullYear()}/${month}${day}-${hh}${mm}${ss}${tiebreaker}`);
+      const rand = Math.floor(100 + Math.random() * 900);
+      setRequisitionNumber(`${desk.code}/${new Date().getFullYear()}/08-${rand}`);
     }
   };
 
@@ -214,6 +220,26 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
     }
   };
 
+  const processPerformaFile = (file: File) => {
+    if (!file) return;
+    setPerformaFileName(file.name);
+    setPerformaFileSize(file.size);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPerformaFileUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePerformaFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      processPerformaFile(e.target.files[0]);
+    }
+  };
+
   const handleRemoveOrder = () => {
     setOrderDocumentName('');
     setOrderDocumentUrl('');
@@ -226,7 +252,12 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
   const handleAddCustomField = (type: CustomFieldType = 'text') => {
     const newField: CustomFieldDefinition = {
       id: `field_${Date.now()}`,
-      label: type === 'number' ? 'नया संख्यात्मक फ़ील्ड (Numeric)' : type === 'select' ? 'ड्रॉपडाउन विकल्प फ़ील्ड' : 'नया टेक्स्ट फ़ील्ड',
+      label:
+        type === 'number' ? 'नया संख्यात्मक फ़ील्ड (Numeric)' :
+        type === 'select' ? 'ड्रॉपडाउन विकल्प फ़ील्ड' :
+        type === 'date' ? 'नया दिनांक फ़ील्ड (Date)' :
+        type === 'checkbox' ? 'नया चेकबॉक्स फ़ील्ड (Checkbox)' :
+        'नया टेक्स्ट फ़ील्ड',
       type,
       placeholder: '',
       required: true,
@@ -249,6 +280,11 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
 
     if (!title.trim()) {
       alert('कृपया मांग का विषय/शीर्षक दर्ज करें।');
+      return;
+    }
+
+    if (mode === 'CUSTOM_PERFORMA' && !performaFileUrl) {
+      alert('कृपया प्रपत्र टेम्पलेट फ़ाइल (PDF/Excel/Word) अपलोड करें।');
       return;
     }
 
@@ -333,6 +369,9 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
       orderReferenceNumber: orderReferenceNumber.trim() || undefined,
       orderDate: orderDate || undefined,
       attachmentNoticeDocUrl: orderDocumentUrl.trim() || undefined,
+      performaFileName: mode === 'CUSTOM_PERFORMA' ? (performaFileName.trim() || undefined) : undefined,
+      performaFileUrl: mode === 'CUSTOM_PERFORMA' ? (performaFileUrl.trim() || undefined) : undefined,
+      performaFileSize: mode === 'CUSTOM_PERFORMA' ? (performaFileSize || undefined) : undefined,
       status: 'ACTIVE'
     };
 
@@ -1268,12 +1307,13 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
             </div>
 
             {/* Mode selection buttons */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               {[
                 { id: 'CUSTOM_FORM', label: 'कस्टमाइज़्ड फॉर्म फ़ील्ड्स', icon: Sliders, desc: 'पोर्टल संरचित इनपुट फ़ील्ड्स' },
                 { id: 'GOOGLE_SHEET', label: 'गूगल स्प्रेडशीट मोड', icon: FileSpreadsheet, desc: 'मास्टर गूगल शीट लिंक' },
                 { id: 'GOOGLE_FORM', label: 'गूगल फॉर्म मोड', icon: Link, desc: 'गूगल फॉर्म लिंक एवं पावती' },
-                { id: 'HYBRID', label: 'हाइब्रिड (फॉर्म + शीट)', icon: Sparkles, desc: 'फ़ील्ड्स एवं स्प्रेडशीट दोनों' }
+                { id: 'HYBRID', label: 'हाइब्रिड (फॉर्म + शीट)', icon: Sparkles, desc: 'फ़ील्ड्स एवं स्प्रेडशीट दोनों' },
+                { id: 'CUSTOM_PERFORMA', label: 'अनुकूलित प्रपत्र (Custom Performa)', icon: FileUp, desc: 'PDF/Excel/Word टेम्पलेट अपलोड करें' }
               ].map(m => {
                 const IconComponent = m.icon;
                 return (
@@ -1331,6 +1371,62 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
               </div>
             )}
 
+            {/* Custom Performa Upload Section */}
+            {mode === 'CUSTOM_PERFORMA' && (
+              <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-xl space-y-3">
+                <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+                  <FileUp className="w-4 h-4 text-amber-700" />
+                  <span>रिक्त प्रपत्र टेम्पलेट अपलोड करें (Upload Blank Template)</span>
+                </div>
+                <p className="text-[11px] text-amber-800">
+                  यह टेम्पलेट (PDF/Excel/Word) सभी लक्षित इकाइयों को डाउनलोड हेतु उपलब्ध होगा। इकाइयां इसे ऑफ़लाइन भरकर पुनः अपलोड करेंगी।
+                </p>
+
+                <input
+                  ref={performaFileInputRef}
+                  type="file"
+                  accept=".pdf,.xls,.xlsx,.doc,.docx"
+                  onChange={handlePerformaFileInputChange}
+                  className="hidden"
+                />
+
+                {performaFileName ? (
+                  <div className="flex items-center justify-between gap-2 p-2.5 bg-white border border-amber-300 rounded-lg">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-4 h-4 text-amber-700 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-900 truncate">{performaFileName}</div>
+                        <div className="text-[10px] text-slate-500">{(performaFileSize / 1024).toFixed(1)} KB</div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPerformaFileName('');
+                        setPerformaFileUrl('');
+                        setPerformaFileSize(0);
+                        if (performaFileInputRef.current) performaFileInputRef.current.value = '';
+                      }}
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded shrink-0"
+                      title="हटाएं"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => performaFileInputRef.current?.click()}
+                    className="w-full p-4 border-2 border-dashed border-amber-300 rounded-lg text-center hover:bg-amber-100/50 transition-colors"
+                  >
+                    <FileUp className="w-5 h-5 text-amber-600 mx-auto mb-1" />
+                    <div className="text-xs font-bold text-amber-900">टेम्पलेट फ़ाइल चुनें (PDF/Excel/Word)</div>
+                    <div className="text-[10px] text-amber-700">यहां क्लिक करें अपलोड हेतु</div>
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Custom Form Fields Builder */}
             {(mode === 'CUSTOM_FORM' || mode === 'HYBRID') && (
               <div className="space-y-4 pt-2">
@@ -1369,6 +1465,20 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                       className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold flex items-center gap-1"
                     >
                       <Plus className="w-3 h-3" /> Paragraph
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddCustomField('date')}
+                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Date
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddCustomField('checkbox')}
+                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Checkbox
                     </button>
                   </div>
                 </div>
@@ -1428,10 +1538,14 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                             </label>
                             <input
                               type="text"
-                              value={(field.options || []).join(', ')}
-                              onChange={(e) => handleUpdateField(field.id, { 
-                                options: e.target.value.split(',').map(s => s.trim()).filter(Boolean) 
-                              })}
+                              value={optionsDraft[field.id] ?? (field.options || []).join(', ')}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                setOptionsDraft(prev => ({ ...prev, [field.id]: raw }));
+                                handleUpdateField(field.id, {
+                                  options: raw.split(',').map(s => s.trim()).filter(Boolean)
+                                });
+                              }}
                               placeholder="विकल्प क, विकल्प ख, विकल्प ग"
                               className="w-full text-xs px-2.5 py-1 bg-white border border-slate-300 rounded"
                             />
