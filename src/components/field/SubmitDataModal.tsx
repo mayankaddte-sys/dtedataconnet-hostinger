@@ -66,6 +66,28 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
     return existingSubmission?.data || {};
   });
 
+  // CUSTOM_PERFORMA mode: the filled template the ITI uploads back.
+  const [performaSubmissionFileName, setPerformaSubmissionFileName] = useState<string>(() => {
+    return existingSubmission?.performaSubmissionFileName || '';
+  });
+  const [performaSubmissionFileUrl, setPerformaSubmissionFileUrl] = useState<string>(() => {
+    return existingSubmission?.performaSubmissionFileUrl || '';
+  });
+  const performaSubmissionFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePerformaSubmissionFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setPerformaSubmissionFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPerformaSubmissionFileUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const [googleSheetSubmittedUrl, setGoogleSheetSubmittedUrl] = useState<string>(() => {
     return existingSubmission?.googleSheetSubmittedUrl || '';
   });
@@ -215,6 +237,11 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
       return;
     }
 
+    if (requisition.mode === 'CUSTOM_PERFORMA' && !performaSubmissionFileUrl) {
+      alert('कृपया भरा हुआ प्रपत्र (Filled Performa) अपलोड करें।');
+      return;
+    }
+
     // Signature / signed-letter is only mandatory when the directorate
     // explicitly asked for one on this requisition (requiresSignedLetter).
     // If the desk didn't request it, field units may submit without either.
@@ -267,7 +294,9 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
       signedLetterDispatchNumber: dispatchNumber.trim() || undefined,
       signedLetterDate: dispatchDate || undefined,
       digitalSignatureDataUrl: digitalSignatureUrl || undefined,
-      signatureType: finalSignatureType
+      signatureType: finalSignatureType,
+      performaSubmissionFileName: performaSubmissionFileName.trim() || undefined,
+      performaSubmissionFileUrl: performaSubmissionFileUrl || undefined
     };
 
     onSubmit(payload);
@@ -546,6 +575,74 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
               </div>
             )}
 
+            {/* SECTION: Custom Performa (download template, upload filled) */}
+            {requisition.mode === 'CUSTOM_PERFORMA' && (
+              <div className="bg-white p-5 rounded-xl border border-amber-200 shadow-xs space-y-3">
+                <div className="flex items-center gap-2 pb-2 border-b border-amber-100">
+                  <FileText className="w-4 h-4 text-amber-700" />
+                  <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+                    अनुकूलित प्रपत्र (Custom Performa)
+                  </h3>
+                </div>
+
+                {requisition.performaFileUrl && (
+                  <a
+                    href={requisition.performaFileUrl}
+                    download={requisition.performaFileName || 'template'}
+                    className="flex items-center justify-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg font-bold text-xs transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>टेम्पलेट डाउनलोड करें ({requisition.performaFileName})</span>
+                  </a>
+                )}
+
+                <p className="text-[11px] text-slate-500">
+                  उपरोक्त टेम्पलेट डाउनलोड करें, ऑफ़लाइन भरें, और भरी हुई फ़ाइल यहां अपलोड करें।
+                </p>
+
+                <input
+                  ref={performaSubmissionFileInputRef}
+                  type="file"
+                  accept=".pdf,.xls,.xlsx,.doc,.docx"
+                  onChange={handlePerformaSubmissionFileChange}
+                  disabled={isLocked}
+                  className="hidden"
+                />
+
+                {performaSubmissionFileName ? (
+                  <div className="flex items-center justify-between gap-2 p-2.5 bg-emerald-50 border border-emerald-300 rounded-lg">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-4 h-4 text-emerald-700 shrink-0" />
+                      <span className="text-xs font-bold text-slate-900 truncate">{performaSubmissionFileName}</span>
+                    </div>
+                    {!isLocked && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPerformaSubmissionFileName('');
+                          setPerformaSubmissionFileUrl('');
+                          if (performaSubmissionFileInputRef.current) performaSubmissionFileInputRef.current.value = '';
+                        }}
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isLocked}
+                    onClick={() => performaSubmissionFileInputRef.current?.click()}
+                    className="w-full p-4 border-2 border-dashed border-slate-300 rounded-lg text-center hover:bg-slate-50 transition-colors disabled:opacity-50"
+                  >
+                    <FileUp className="w-5 h-5 text-slate-500 mx-auto mb-1" />
+                    <div className="text-xs font-bold text-slate-700">भरी हुई फ़ाइल अपलोड करें</div>
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* SECTION: Custom Dynamic Form Fields */}
             {(requisition.mode === 'CUSTOM_FORM' || requisition.mode === 'HYBRID') && requisition.customFields && (
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
@@ -612,6 +709,28 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
                               </label>
                             ))}
                           </div>
+                        ) : field.type === 'date' ? (
+                          <input
+                            type="date"
+                            disabled={isLocked}
+                            value={String(value)}
+                            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+                            required={field.required}
+                            className="w-full text-xs font-semibold px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden disabled:bg-slate-100"
+                          />
+                        ) : field.type === 'checkbox' ? (
+                          <label className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100 w-fit">
+                            <input
+                              type="checkbox"
+                              disabled={isLocked}
+                              checked={Boolean(value)}
+                              onChange={(e) => handleFieldChange(field.id, e.target.checked)}
+                              className="rounded text-indigo-600"
+                            />
+                            <span className="text-xs text-slate-800 font-medium">
+                              {field.placeholder || 'हां / Yes'}
+                            </span>
+                          </label>
                         ) : (
                           <input
                             type={field.type === 'number' ? 'number' : 'text'}
