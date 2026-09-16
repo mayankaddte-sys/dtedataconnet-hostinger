@@ -94,7 +94,7 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
   const [previewingOrder, setPreviewingOrder] = useState<boolean>(false);
   const orderFileInputRef = useRef<HTMLInputElement>(null);
 
-  // CUSTOM_PERFORMA mode: blank template (PDF/Excel/Word) the desk uploads
+  // Optional attachment within CUSTOM_FORM/HYBRID: blank template (PDF/Excel/Word) the desk uploads
   // for ITIs to download, fill offline, and re-upload.
   const [performaFileName, setPerformaFileName] = useState<string>('');
   const [performaFileUrl, setPerformaFileUrl] = useState<string>('');
@@ -283,8 +283,8 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
       return;
     }
 
-    if (mode === 'CUSTOM_PERFORMA' && !performaFileUrl) {
-      alert('कृपया प्रपत्र टेम्पलेट फ़ाइल (PDF/Excel/Word) अपलोड करें।');
+    if ((mode === 'CUSTOM_FORM' || mode === 'HYBRID') && performaFileInputRef.current?.files?.length && !performaFileUrl) {
+      alert('कृपया प्रपत्र टेम्पलेट फ़ाइल अपलोड पूर्ण होने की प्रतीक्षा करें।');
       return;
     }
 
@@ -369,9 +369,9 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
       orderReferenceNumber: orderReferenceNumber.trim() || undefined,
       orderDate: orderDate || undefined,
       attachmentNoticeDocUrl: orderDocumentUrl.trim() || undefined,
-      performaFileName: mode === 'CUSTOM_PERFORMA' ? (performaFileName.trim() || undefined) : undefined,
-      performaFileUrl: mode === 'CUSTOM_PERFORMA' ? (performaFileUrl.trim() || undefined) : undefined,
-      performaFileSize: mode === 'CUSTOM_PERFORMA' ? (performaFileSize || undefined) : undefined,
+      performaFileName: (mode === 'CUSTOM_FORM' || mode === 'HYBRID') ? (performaFileName.trim() || undefined) : undefined,
+      performaFileUrl: (mode === 'CUSTOM_FORM' || mode === 'HYBRID') ? (performaFileUrl.trim() || undefined) : undefined,
+      performaFileSize: (mode === 'CUSTOM_FORM' || mode === 'HYBRID') ? (performaFileSize || undefined) : undefined,
       status: 'ACTIVE'
     };
 
@@ -1307,13 +1307,12 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
             </div>
 
             {/* Mode selection buttons */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
                 { id: 'CUSTOM_FORM', label: 'कस्टमाइज़्ड फॉर्म फ़ील्ड्स', icon: Sliders, desc: 'पोर्टल संरचित इनपुट फ़ील्ड्स' },
                 { id: 'GOOGLE_SHEET', label: 'गूगल स्प्रेडशीट मोड', icon: FileSpreadsheet, desc: 'मास्टर गूगल शीट लिंक' },
                 { id: 'GOOGLE_FORM', label: 'गूगल फॉर्म मोड', icon: Link, desc: 'गूगल फॉर्म लिंक एवं पावती' },
-                { id: 'HYBRID', label: 'हाइब्रिड (फॉर्म + शीट)', icon: Sparkles, desc: 'फ़ील्ड्स एवं स्प्रेडशीट दोनों' },
-                { id: 'CUSTOM_PERFORMA', label: 'अनुकूलित प्रपत्र (Custom Performa)', icon: FileUp, desc: 'PDF/Excel/Word टेम्पलेट अपलोड करें' }
+                { id: 'HYBRID', label: 'हाइब्रिड (फॉर्म + शीट)', icon: Sparkles, desc: 'फ़ील्ड्स एवं स्प्रेडशीट दोनों' }
               ].map(m => {
                 const IconComponent = m.icon;
                 return (
@@ -1371,65 +1370,66 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
               </div>
             )}
 
-            {/* Custom Performa Upload Section */}
-            {mode === 'CUSTOM_PERFORMA' && (
-              <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-xl space-y-3">
-                <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
-                  <FileUp className="w-4 h-4 text-amber-700" />
-                  <span>रिक्त प्रपत्र टेम्पलेट अपलोड करें (Upload Blank Template)</span>
-                </div>
-                <p className="text-[11px] text-amber-800">
-                  यह टेम्पलेट (PDF/Excel/Word) सभी लक्षित इकाइयों को डाउनलोड हेतु उपलब्ध होगा। इकाइयां इसे ऑफ़लाइन भरकर पुनः अपलोड करेंगी।
-                </p>
-
-                <input
-                  ref={performaFileInputRef}
-                  type="file"
-                  accept=".pdf,.xls,.xlsx,.doc,.docx"
-                  onChange={handlePerformaFileInputChange}
-                  className="hidden"
-                />
-
-                {performaFileName ? (
-                  <div className="flex items-center justify-between gap-2 p-2.5 bg-white border border-amber-300 rounded-lg">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="w-4 h-4 text-amber-700 shrink-0" />
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-900 truncate">{performaFileName}</div>
-                        <div className="text-[10px] text-slate-500">{(performaFileSize / 1024).toFixed(1)} KB</div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPerformaFileName('');
-                        setPerformaFileUrl('');
-                        setPerformaFileSize(0);
-                        if (performaFileInputRef.current) performaFileInputRef.current.value = '';
-                      }}
-                      className="p-1 text-slate-400 hover:text-rose-600 rounded shrink-0"
-                      title="हटाएं"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => performaFileInputRef.current?.click()}
-                    className="w-full p-4 border-2 border-dashed border-amber-300 rounded-lg text-center hover:bg-amber-100/50 transition-colors"
-                  >
-                    <FileUp className="w-5 h-5 text-amber-600 mx-auto mb-1" />
-                    <div className="text-xs font-bold text-amber-900">टेम्पलेट फ़ाइल चुनें (PDF/Excel/Word)</div>
-                    <div className="text-[10px] text-amber-700">यहां क्लिक करें अपलोड हेतु</div>
-                  </button>
-                )}
-              </div>
-            )}
-
             {/* Custom Form Fields Builder */}
             {(mode === 'CUSTOM_FORM' || mode === 'HYBRID') && (
               <div className="space-y-4 pt-2">
+                {/* Optional: downloadable performa template, part of the
+                    custom-form fields setup (not a separate mode) —
+                    ITIs fill this offline alongside/instead of the
+                    dynamic fields below. */}
+                <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-xl space-y-3">
+                  <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+                    <FileUp className="w-4 h-4 text-amber-700" />
+                    <span>वैकल्पिक: रिक्त प्रपत्र टेम्पलेट संलग्न करें (Optional: Attach Blank Template)</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800">
+                    यदि इकाइयों को कोई विशिष्ट PDF/Excel/Word प्रपत्र ऑफ़लाइन भरकर अपलोड करना है, तो यहां टेम्पलेट संलग्न करें — यह नीचे की फ़ील्ड्स के अतिरिक्त उपलब्ध होगा।
+                  </p>
+
+                  <input
+                    ref={performaFileInputRef}
+                    type="file"
+                    accept=".pdf,.xls,.xlsx,.doc,.docx"
+                    onChange={handlePerformaFileInputChange}
+                    className="hidden"
+                  />
+
+                  {performaFileName ? (
+                    <div className="flex items-center justify-between gap-2 p-2.5 bg-white border border-amber-300 rounded-lg">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-4 h-4 text-amber-700 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-900 truncate">{performaFileName}</div>
+                          <div className="text-[10px] text-slate-500">{(performaFileSize / 1024).toFixed(1)} KB</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPerformaFileName('');
+                          setPerformaFileUrl('');
+                          setPerformaFileSize(0);
+                          if (performaFileInputRef.current) performaFileInputRef.current.value = '';
+                        }}
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded shrink-0"
+                        title="हटाएं"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => performaFileInputRef.current?.click()}
+                      className="w-full p-3 border-2 border-dashed border-amber-300 rounded-lg text-center hover:bg-amber-100/50 transition-colors"
+                    >
+                      <FileUp className="w-5 h-5 text-amber-600 mx-auto mb-1" />
+                      <div className="text-xs font-bold text-amber-900">टेम्पलेट फ़ाइल चुनें (PDF/Excel/Word)</div>
+                      <div className="text-[10px] text-amber-700">यहां क्लिक करें अपलोड हेतु</div>
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-800">
                     प्रश्नावली / डेटा फ़ील्ड्स सूची ({customFields.length} फ़ील्ड्स)
