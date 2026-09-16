@@ -261,7 +261,7 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
       type,
       placeholder: '',
       required: true,
-      options: type === 'select' || type === 'radio' ? ['विकल्प 1', 'विकल्प 2', 'विकल्प 3'] : undefined,
+      options: type === 'select' || type === 'radio' || type === 'checkbox' ? ['विकल्प 1', 'विकल्प 2', 'विकल्प 3'] : undefined,
       unit: type === 'number' ? 'संख्या' : undefined
     };
     setCustomFields([...customFields, newField]);
@@ -1531,7 +1531,7 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                           </div>
                         )}
 
-                        {(field.type === 'select' || field.type === 'radio') && (
+                        {(field.type === 'select' || field.type === 'radio' || field.type === 'checkbox') && (
                           <div className="sm:col-span-2">
                             <label className="text-[11px] font-bold text-slate-700 block mb-0.5">
                               विकल्प (अल्पविराम / Comma से अलग करें)
