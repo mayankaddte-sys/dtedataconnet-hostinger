@@ -66,7 +66,8 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
     return existingSubmission?.data || {};
   });
 
-  // CUSTOM_PERFORMA mode: the filled template the ITI uploads back.
+  // Optional performa attachment (part of CUSTOM_FORM/HYBRID, not a
+  // separate mode): the filled template the ITI uploads back.
   const [performaSubmissionFileName, setPerformaSubmissionFileName] = useState<string>(() => {
     return existingSubmission?.performaSubmissionFileName || '';
   });
@@ -237,7 +238,7 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
       return;
     }
 
-    if (requisition.mode === 'CUSTOM_PERFORMA' && !performaSubmissionFileUrl) {
+    if (requisition.performaFileUrl && !performaSubmissionFileUrl) {
       alert('कृपया भरा हुआ प्रपत्र (Filled Performa) अपलोड करें।');
       return;
     }
@@ -576,7 +577,7 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
             )}
 
             {/* SECTION: Custom Performa (download template, upload filled) */}
-            {requisition.mode === 'CUSTOM_PERFORMA' && (
+            {requisition.performaFileUrl && (
               <div className="bg-white p-5 rounded-xl border border-amber-200 shadow-xs space-y-3">
                 <div className="flex items-center gap-2 pb-2 border-b border-amber-100">
                   <FileText className="w-4 h-4 text-amber-700" />
