@@ -11,7 +11,7 @@ export type PortalNavMenu =
 
 export type PriorityLevel = 'URGENT' | 'HIGH' | 'NORMAL' | 'ROUTINE';
 
-export type RequisitionMode = 'CUSTOM_FORM' | 'GOOGLE_SHEET' | 'GOOGLE_FORM' | 'HYBRID';
+export type RequisitionMode = 'CUSTOM_FORM' | 'GOOGLE_SHEET' | 'GOOGLE_FORM' | 'HYBRID' | 'CUSTOM_PERFORMA';
 
 export type SubmissionStatus = 'PENDING' | 'SUBMITTED' | 'LATE_SUBMITTED' | 'OVERDUE' | 'UNDER_REVIEW' | 'APPROVED' | 'REVISION_REQUESTED';
 
@@ -153,7 +153,13 @@ export interface Requisition {
   orderDocumentSize?: string;
   orderReferenceNumber?: string; // e.g. "शासनादेश सं. 142/2026/88-व्या.शि."
   orderDate?: string; // Date of the Government Order
-  
+
+  // CUSTOM_PERFORMA mode: desk uploads a blank template (PDF/Excel/Word)
+  // for ITIs to download, fill offline, and re-upload — see mode above.
+  performaFileName?: string;
+  performaFileUrl?: string; // base64 data: URL
+  performaFileSize?: number; // bytes
+
   status: 'ACTIVE' | 'ARCHIVED' | 'CLOSED';
 }
 
@@ -193,7 +199,13 @@ export interface SubmissionRecord {
   signedLetterDate?: string;
   digitalSignatureDataUrl?: string;
   signatureType?: 'UPLOADED_DOCUMENT' | 'FINGER_DRAWN' | 'BOTH';
-  
+
+  // CUSTOM_PERFORMA mode: the filled template the ITI uploaded back.
+  // Kept separate from uploadedDocumentName/Url above, which is the
+  // officer's signature/seal proof document — a different purpose.
+  performaSubmissionFileName?: string;
+  performaSubmissionFileUrl?: string;
+
   // Desk feedback
   deskReviewedAt?: string;
   deskReviewedBy?: string;
