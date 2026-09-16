@@ -288,6 +288,11 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
       return;
     }
 
+    if (mode === 'GOOGLE_FORM' && !googleFormUrl.trim()) {
+      alert('कृपया गूगल फॉर्म का यूआरएल दर्ज करें।');
+      return;
+    }
+
     const desk = desks.find(d => d.id === selectedDeskId);
     if (!desk) return;
 
@@ -1367,6 +1372,40 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                     className="w-full text-xs px-3 py-2 bg-white border border-emerald-300 rounded-lg text-slate-900"
                   />
                 </div>
+              </div>
+            )}
+
+            {/* Google Form Config Section */}
+            {mode === 'GOOGLE_FORM' && (
+              <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-xl space-y-3">
+                <div className="flex items-center gap-2 text-blue-900 font-bold text-xs">
+                  <Link className="w-4 h-4 text-blue-700" />
+                  <span>गूगल फॉर्म कॉन्फ़िगरेशन</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-blue-900 mb-1">
+                    गूगल फॉर्म का यूआरएल (Google Form URL) *
+                  </label>
+                  <input
+                    type="url"
+                    value={googleFormUrl}
+                    onChange={(e) => setGoogleFormUrl(e.target.value)}
+                    placeholder="https://docs.google.com/forms/d/..."
+                    className="w-full text-xs px-3 py-2 bg-white border border-blue-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-mono"
+                    required={mode === 'GOOGLE_FORM'}
+                  />
+                </div>
+
+                <label className="flex items-center gap-2 text-xs font-medium text-blue-900">
+                  <input
+                    type="checkbox"
+                    checked={requireFormResponseId}
+                    onChange={(e) => setRequireFormResponseId(e.target.checked)}
+                    className="rounded border-blue-300"
+                  />
+                  इकाइयों से सबमिशन पावती/रेस्पॉन्स आईडी की पुष्टि अनिवार्य करें
+                </label>
               </div>
             )}
 
