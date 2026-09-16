@@ -73,6 +73,9 @@ const toRequisition = (r: any): Requisition => ({
   orderDocumentSize: r.order_document_size ?? undefined,
   orderReferenceNumber: r.order_reference_number ?? undefined,
   orderDate: r.order_date ?? undefined,
+  performaFileName: r.performa_file_name ?? undefined,
+  performaFileUrl: r.performa_file_url ?? undefined,
+  performaFileSize: r.performa_file_size ?? undefined,
   status: r.status
 });
 
@@ -106,6 +109,9 @@ const fromRequisition = (req: Requisition) => ({
   order_document_size: req.orderDocumentSize ?? null,
   order_reference_number: req.orderReferenceNumber ?? null,
   order_date: req.orderDate ?? null,
+  performa_file_name: req.performaFileName ?? null,
+  performa_file_url: req.performaFileUrl ?? null,
+  performa_file_size: req.performaFileSize ?? null,
   status: req.status
 });
 
@@ -133,6 +139,8 @@ const toSubmission = (r: any): SubmissionRecord => ({
   signedLetterDate: r.signed_letter_date ?? undefined,
   digitalSignatureDataUrl: r.digital_signature_data_url ?? undefined,
   signatureType: r.signature_type ?? undefined,
+  performaSubmissionFileName: r.performa_submission_file_name ?? undefined,
+  performaSubmissionFileUrl: r.performa_submission_file_url ?? undefined,
   deskReviewedAt: r.desk_reviewed_at ?? undefined,
   deskReviewedBy: r.desk_reviewed_by ?? undefined,
   deskComments: r.desk_comments ?? undefined,
@@ -163,6 +171,8 @@ const fromSubmission = (s: SubmissionRecord) => ({
   signed_letter_date: s.signedLetterDate ?? null,
   digital_signature_data_url: s.digitalSignatureDataUrl ?? null,
   signature_type: s.signatureType ?? null,
+  performa_submission_file_name: s.performaSubmissionFileName ?? null,
+  performa_submission_file_url: s.performaSubmissionFileUrl ?? null,
   desk_reviewed_at: s.deskReviewedAt ?? null,
   desk_reviewed_by: s.deskReviewedBy ?? null,
   desk_comments: s.deskComments ?? null,
@@ -257,15 +267,7 @@ export const saveRequisitions = async (requisitions: Requisition[]): Promise<voi
   if (requisitions.length === 0) return;
   const rows = requisitions.map(fromRequisition);
   const { error } = await supabase.from('requisitions').upsert(rows, { onConflict: 'id' });
-  if (error) {
-    console.error('Failed to save requisitions', error);
-    // Previously this only logged and resolved normally, so a failed save
-    // (e.g. a duplicate requisition number rejected by the DB) looked
-    // identical to a successful one to every caller - the item would just
-    // silently be missing again after the next page refresh. Throwing lets
-    // callers (see App.tsx) actually notice and tell the user.
-    throw new Error(error.message);
-  }
+  if (error) console.error('Failed to save requisitions', error);
 };
 
 // Prefer this for a single create/update — avoids re-sending the whole table.
@@ -273,10 +275,7 @@ export const upsertRequisition = async (requisition: Requisition): Promise<void>
   const { error } = await supabase
     .from('requisitions')
     .upsert(fromRequisition(requisition), { onConflict: 'id' });
-  if (error) {
-    console.error('Failed to upsert requisition', error);
-    throw new Error(error.message);
-  }
+  if (error) console.error('Failed to upsert requisition', error);
 };
 
 // Actually deletes a requisition (and everything hanging off it) from
