@@ -719,18 +719,29 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
                             className="w-full text-xs font-semibold px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden disabled:bg-slate-100"
                           />
                         ) : field.type === 'checkbox' ? (
-                          <label className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100 w-fit">
-                            <input
-                              type="checkbox"
-                              disabled={isLocked}
-                              checked={Boolean(value)}
-                              onChange={(e) => handleFieldChange(field.id, e.target.checked)}
-                              className="rounded text-indigo-600"
-                            />
-                            <span className="text-xs text-slate-800 font-medium">
-                              {field.placeholder || 'हां / Yes'}
-                            </span>
-                          </label>
+                          <div className="space-y-1.5 pt-1">
+                            {(field.options || []).map(opt => {
+                              const selected: string[] = Array.isArray(value) ? value as string[] : [];
+                              const isChecked = selected.includes(opt);
+                              return (
+                                <label key={opt} className="flex items-center gap-2 p-2 rounded border border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100">
+                                  <input
+                                    type="checkbox"
+                                    disabled={isLocked}
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      const next = isChecked
+                                        ? selected.filter(o => o !== opt)
+                                        : [...selected, opt];
+                                      handleFieldChange(field.id, next);
+                                    }}
+                                    className="rounded text-indigo-600"
+                                  />
+                                  <span className="text-xs text-slate-800 font-medium">{opt}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
                         ) : (
                           <input
                             type={field.type === 'number' ? 'number' : 'text'}
