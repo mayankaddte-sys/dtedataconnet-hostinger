@@ -6,7 +6,8 @@ import {
   FieldUnit,
   ExtensionRequest,
   DefaulterNotice,
-  UserSession
+  UserSession,
+  FieldUnitBunch
 } from '../types/portal';
 
 /* =========================================================================
@@ -224,6 +225,26 @@ const fromNotice = (n: DefaulterNotice) => ({
   sent_by_desk_id: n.sentByDeskId
 });
 
+const toBunch = (r: any): FieldUnitBunch => ({
+  id: r.id,
+  name: r.name,
+  description: r.description ?? undefined,
+  unitIds: r.unit_ids ?? [],
+  createdByDeskId: r.created_by_desk_id ?? undefined,
+  createdByDeskName: r.created_by_desk_name ?? undefined,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at ?? undefined
+});
+
+const fromBunch = (b: FieldUnitBunch) => ({
+  id: b.id,
+  name: b.name,
+  description: b.description ?? null,
+  unit_ids: b.unitIds ?? [],
+  created_by_desk_id: b.createdByDeskId ?? null,
+  created_by_desk_name: b.createdByDeskName ?? null
+});
+
 /* =========================================================================
    DESKS & FIELD UNITS (reference data — read-mostly)
    ========================================================================= */
@@ -386,6 +407,47 @@ export const saveDefaulterNotices = async (notices: DefaulterNotice[]): Promise<
   const rows = notices.map(fromNotice);
   const { error } = await supabase.from('defaulter_notices').upsert(rows, { onConflict: 'id' });
   if (error) console.error('Failed to save defaulter notices', error);
+};
+
+/* =========================================================================
+   FIELD UNIT BUNCHES — reusable named groups of field units, for repeated
+   requisition targeting (see FieldUnitBunch in types/portal.ts).
+   ========================================================================= */
+
+export const getStoredBunches = async (): Promise<FieldUnitBunch[]> => {
+  const { data, error } = await supabase
+    .from('field_unit_bunches')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.error('Failed to fetch field unit bunches', error);
+    return [];
+  }
+  return (data ?? []).map(toBunch);
+};
+
+// Upserts the full list passed in (mirrors saveRequisitions/saveExtensions).
+export const saveBunches = async (bunches: FieldUnitBunch[]): Promise<void> => {
+  if (bunches.length === 0) return;
+  const rows = bunches.map(fromBunch);
+  const { error } = await supabase.from('field_unit_bunches').upsert(rows, { onConflict: 'id' });
+  if (error) console.error('Failed to save field unit bunches', error);
+};
+
+// Prefer this for a single create/update — avoids re-sending the whole table.
+export const upsertBunch = async (bunch: FieldUnitBunch): Promise<void> => {
+  const { error } = await supabase
+    .from('field_unit_bunches')
+    .upsert(fromBunch(bunch), { onConflict: 'id' });
+  if (error) console.error('Failed to upsert field unit bunch', error);
+};
+
+// Actual delete — saveBunches()/the array-sync effect only ever upserts, so
+// this is the only path that removes a bunch for every user, not just the
+// one who deleted it locally (same reasoning as deleteRequisition above).
+export const deleteBunch = async (bunchId: string): Promise<void> => {
+  const { error } = await supabase.from('field_unit_bunches').delete().eq('id', bunchId);
+  if (error) console.error('Failed to delete field unit bunch', error);
 };
 
 /* =========================================================================
