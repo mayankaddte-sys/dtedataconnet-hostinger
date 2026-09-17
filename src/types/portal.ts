@@ -97,7 +97,24 @@ export type TargetScopeType =
   | 'SELECTED_JD_OFFICES' 
   | 'SELECTED_ITIS' 
   | 'SELECTED_ZONES' 
+  | 'SAVED_BUNCH'
   | 'SPECIFIC_UNITS';
+
+// A directorate-defined, reusable named group of field units (any mix of
+// JD offices and ITIs). Desks create these once via the "Manage Bunches"
+// screen and re-apply them as the target scope on future requisitions,
+// instead of re-picking units/districts every time a repetitive demand
+// goes out.
+export interface FieldUnitBunch {
+  id: string;
+  name: string;
+  description?: string;
+  unitIds: string[]; // mix of JD_OFFICE + ITI ids
+  createdByDeskId?: string;
+  createdByDeskName?: string;
+  createdAt: string; // ISO string
+  updatedAt?: string; // ISO string
+}
 
 export interface RequisitionForwardEntry {
   unitId: string;
@@ -130,6 +147,8 @@ export interface Requisition {
   targetZones?: string[];
   targetDistricts?: string[];
   targetUnitIds: string[]; // list of field unit IDs targeted
+  targetBunchId?: string; // set when targetScope === 'SAVED_BUNCH'
+  targetBunchName?: string; // snapshot of the bunch name at issue time, for display even if the bunch is later renamed/deleted
 
   // Forwarding: when a requisition is issued to a JD office (not directly to
   // ITIs), the JD can relay it to selected/all ITIs in their mandal. Every
