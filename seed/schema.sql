@@ -189,4 +189,24 @@ CREATE TABLE IF NOT EXISTS defaulter_notices (
         ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ------------------------------------------------------------
+-- 8. field_unit_bunches
+-- Reusable, directorate-defined named groups of field units (any mix of
+-- JD offices + ITIs) that a desk can create once via "Manage Bunches"
+-- and re-apply as a requisition's target scope for repetitive demands.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS field_unit_bunches (
+    id                      VARCHAR(50)   NOT NULL PRIMARY KEY,
+    name                    VARCHAR(500)  NOT NULL,
+    description             TEXT          DEFAULT NULL,
+    unit_ids                JSON          DEFAULT NULL,
+    created_by_desk_id      VARCHAR(50)   DEFAULT NULL,
+    created_by_desk_name    VARCHAR(500)  DEFAULT NULL,
+    created_at              DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    updated_at              DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_bunch_desk (created_by_desk_id),
+    CONSTRAINT fk_bunch_desk FOREIGN KEY (created_by_desk_id) REFERENCES directorate_desks(id)
+        ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;
