@@ -7,7 +7,8 @@ import {
   RequisitionMode, 
   CustomFieldDefinition, 
   CustomFieldType,
-  TargetScopeType
+  TargetScopeType,
+  FieldUnitBunch
 } from '../../types/portal';
 import { 
   X, 
@@ -41,8 +42,12 @@ import {
   Filter,
   GraduationCap,
   Map,
-  Check
+  Check,
+  Package,
+  Settings,
+  BookmarkPlus
 } from 'lucide-react';
+import { ManageBunchesModal } from './ManageBunchesModal';
 
 interface CreateRequisitionModalProps {
   isOpen: boolean;
@@ -51,6 +56,12 @@ interface CreateRequisitionModalProps {
   fieldUnits: FieldUnit[];
   activeDeskId?: string;
   onSaveRequisition: (req: Requisition) => void;
+  // Reusable named groups of field units ("bunches") that desks can build
+  // once via the Manage Bunches screen and re-apply here as a target
+  // scope, for demands that go out to the same set of units repeatedly.
+  bunches: FieldUnitBunch[];
+  onSaveBunch: (bunch: FieldUnitBunch) => void;
+  onDeleteBunch: (bunchId: string) => void;
 }
 
 export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
@@ -59,7 +70,10 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
   desks,
   fieldUnits,
   activeDeskId,
-  onSaveRequisition
+  onSaveRequisition,
+  bunches,
+  onSaveBunch,
+  onDeleteBunch
 }) => {
   const initialDesk = desks.find(d => d.id === activeDeskId) || desks[0];
 
@@ -129,6 +143,16 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
   // Legacy fallback
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
+
+  // Option 6: Saved Bunch (reusable named group of JD offices + ITIs,
+  // created once via the Manage Bunches screen and re-applied here)
+  const [selectedBunchId, setSelectedBunchId] = useState<string>('');
+  const [bunchSearchQuery, setBunchSearchQuery] = useState<string>('');
+  const [showManageBunches, setShowManageBunches] = useState<boolean>(false);
+  // When set, opens Manage Bunches pre-filled with this selection so the
+  // user can just name it — used by the "save this selection as a bunch"
+  // shortcuts inside Options 4 and 5.
+  const [bunchPrefillUnitIds, setBunchPrefillUnitIds] = useState<string[] | undefined>(undefined);
 
   // Mode
   const [mode, setMode] = useState<RequisitionMode>('CUSTOM_FORM');
@@ -288,11 +312,6 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
       return;
     }
 
-    if (mode === 'GOOGLE_FORM' && !googleFormUrl.trim()) {
-      alert('कृपया गूगल फॉर्म का यूआरएल दर्ज करें।');
-      return;
-    }
-
     const desk = desks.find(d => d.id === selectedDeskId);
     if (!desk) return;
 
@@ -326,6 +345,15 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
     } else if (targetScope === 'SELECTED_ZONES') {
       targetUnitIds = fieldUnits.filter(u => selectedZones.includes(u.zone)).map(u => u.id);
       targetZones = selectedZones;
+    } else if (targetScope === 'SAVED_BUNCH') {
+      if (!selectedBunch) {
+        alert('कृपया एक सहेजा गया बंच चुनें, अथवा नया बंच बनाएं।');
+        return;
+      }
+      targetUnitIds = selectedBunch.unitIds;
+      const targetedUnits = fieldUnits.filter(u => targetUnitIds.includes(u.id));
+      targetZones = Array.from(new Set(targetedUnits.map(u => u.zone)));
+      targetDistricts = Array.from(new Set(targetedUnits.map(u => u.district)));
     } else {
       targetUnitIds = selectedUnitIds;
     }
@@ -354,6 +382,8 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
       targetZones: targetZones || (targetScope === 'SELECTED_ZONES' ? selectedZones : undefined),
       targetDistricts,
       targetUnitIds,
+      targetBunchId: targetScope === 'SAVED_BUNCH' ? selectedBunch?.id : undefined,
+      targetBunchName: targetScope === 'SAVED_BUNCH' ? selectedBunch?.name : undefined,
       customFields: (mode === 'CUSTOM_FORM' || mode === 'HYBRID') ? customFields : undefined,
       googleSheetConfig: (mode === 'GOOGLE_SHEET' || mode === 'HYBRID') ? {
         sheetUrl: googleSheetUrl,
@@ -447,6 +477,8 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
     }
   } else if (targetScope === 'SELECTED_ZONES') {
     currentEffectiveTargetCount = fieldUnits.filter(u => selectedZones.includes(u.zone)).length;
+  } else if (targetScope === 'SAVED_BUNCH') {
+    currentEffectiveTargetCount = selectedBunch ? selectedBunch.unitIds.length : 0;
   }
 
   const toggleJdOffice = (jdId: string) => {
@@ -471,6 +503,50 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
     } else {
       setSelectedItiIds([...selectedItiIds, itiId]);
     }
+  };
+
+  const openManageBunches = () => {
+    setBunchPrefillUnitIds(undefined);
+    setShowManageBunches(true);
+  };
+
+  // "इस चयन को बंच के रूप में सहेजें" — takes whatever units are currently
+  // selected under Option 4 (JD offices) or Option 5 (ITIs, either
+  // sub-mode) and opens Manage Bunches pre-filled with that set.
+  const openSaveCurrentSelectionAsBunch = () => {
+    let unitIds: string[] = [];
+    if (targetScope === 'SELECTED_JD_OFFICES') {
+      unitIds = selectedJdOfficeIds;
+    } else if (targetScope === 'SELECTED_ITIS') {
+      unitIds = itiSelectionSubMode === 'DISTRICT_WISE'
+        ? itis.filter(u => selectedDistricts.includes(u.district)).map(u => u.id)
+        : selectedItiIds;
+    }
+    if (unitIds.length === 0) return;
+    setBunchPrefillUnitIds(unitIds);
+    setShowManageBunches(true);
+  };
+
+  // Once Manage Bunches creates a bunch from a pre-filled selection,
+  // immediately switch this requisition's target scope to that new bunch
+  // rather than leaving the user to reopen the picker and find it.
+  const handleBunchCreatedFromPrefill = (bunch: FieldUnitBunch) => {
+    setSelectedBunchId(bunch.id);
+    setTargetScope('SAVED_BUNCH');
+    setShowManageBunches(false);
+    setBunchPrefillUnitIds(undefined);
+  };
+
+  const filteredBunches = bunches.filter(b => {
+    if (!bunchSearchQuery.trim()) return true;
+    const q = bunchSearchQuery.toLowerCase();
+    return b.name.toLowerCase().includes(q) || (b.description || '').toLowerCase().includes(q);
+  });
+
+  const selectedBunch = bunches.find(b => b.id === selectedBunchId);
+  const bunchComposition = (unitIds: string[]) => {
+    const units = fieldUnits.filter(u => unitIds.includes(u.id));
+    return { jdCount: units.filter(u => u.type === 'JD_OFFICE').length, itiCount: units.filter(u => u.type === 'ITI').length, total: units.length };
   };
 
   return (
@@ -930,6 +1006,13 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                     ? `चयनित: ${selectedDistricts.length} जनपद (${itis.filter(u => selectedDistricts.includes(u.district)).length} ITIs)` 
                     : `चयनित: ${selectedItiIds.length} ITIs`,
                   icon: Target
+                },
+                {
+                  id: 'SAVED_BUNCH',
+                  title: '6. Saved bunch',
+                  hindi: 'सहेजा गया इकाई बंच (पुनः प्रयोग हेतु)',
+                  countDesc: selectedBunch ? `${selectedBunch.name} (${selectedBunch.unitIds.length} इकाइयां)` : `${bunches.length} बंच उपलब्ध`,
+                  icon: Package
                 }
               ].map(item => {
                 const IconComp = item.icon;
@@ -981,7 +1064,7 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                       जिन मण्डलों को चयनित किया जाएगा, केवल वही संयुक्त निदेशक इस मांग को देख व सबमिट कर सकेंगे
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
                       onClick={() => setSelectedJdOfficeIds(jdOffices.map(u => u.id))}
@@ -995,6 +1078,15 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                       className="px-2.5 py-1 text-xs bg-white text-slate-700 font-medium rounded-lg border border-slate-300 hover:bg-slate-100 transition-colors"
                     >
                       हटाएं (Clear)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openSaveCurrentSelectionAsBunch}
+                      disabled={selectedJdOfficeIds.length === 0}
+                      className="px-2.5 py-1 text-xs bg-white text-indigo-700 font-semibold rounded-lg border border-indigo-300 hover:bg-indigo-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                      title="इस चयन को भविष्य में पुनः उपयोग हेतु बंच के रूप में सहेजें"
+                    >
+                      <BookmarkPlus className="w-3 h-3" /> बंच के रूप में सहेजें
                     </button>
                   </div>
                 </div>
@@ -1085,13 +1177,24 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                     </button>
                   </div>
 
-                  <span className="text-xs font-semibold text-slate-700">
-                    लक्षित आईटीआई: <strong className="text-indigo-700">
-                      {itiSelectionSubMode === 'DISTRICT_WISE' 
-                        ? itis.filter(u => selectedDistricts.includes(u.district)).length 
-                        : selectedItiIds.length}
-                    </strong> / {itis.length}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-700">
+                      लक्षित आईटीआई: <strong className="text-indigo-700">
+                        {itiSelectionSubMode === 'DISTRICT_WISE' 
+                          ? itis.filter(u => selectedDistricts.includes(u.district)).length 
+                          : selectedItiIds.length}
+                      </strong> / {itis.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={openSaveCurrentSelectionAsBunch}
+                      disabled={(itiSelectionSubMode === 'DISTRICT_WISE' ? selectedDistricts.length : selectedItiIds.length) === 0}
+                      className="px-2.5 py-1 text-xs bg-white text-indigo-700 font-semibold rounded-lg border border-indigo-300 hover:bg-indigo-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                      title="इस चयन को भविष्य में पुनः उपयोग हेतु बंच के रूप में सहेजें"
+                    >
+                      <BookmarkPlus className="w-3 h-3" /> बंच के रूप में सहेजें
+                    </button>
+                  </div>
                 </div>
 
                 {/* Mode A: District Wise Selection */}
@@ -1302,6 +1405,96 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                 )}
               </div>
             )}
+
+            {/* Sub-Panel for Option 6: Saved Bunch */}
+            {targetScope === 'SAVED_BUNCH' && (
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 animate-in fade-in duration-150">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-indigo-600" />
+                      पूर्व-सहेजा गया इकाई बंच चुनें
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      बार-बार भेजी जाने वाली मांगों हेतु पहले से बनाए गए JD/ITI समूह में से एक चुनें
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openManageBunches}
+                    className="px-2.5 py-1.5 text-xs bg-white text-slate-700 font-semibold rounded-lg border border-slate-300 hover:bg-slate-100 transition-colors flex items-center gap-1.5 shrink-0"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-indigo-600" /> बंच प्रबंधित करें (Manage Bunches)
+                  </button>
+                </div>
+
+                {bunches.length === 0 ? (
+                  <div className="p-6 text-center bg-white border border-dashed border-slate-300 rounded-xl">
+                    <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    <p className="text-xs font-bold text-slate-600">अभी तक कोई बंच नहीं बनाया गया है।</p>
+                    <button
+                      type="button"
+                      onClick={openManageBunches}
+                      className="mt-2 px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700"
+                    >
+                      पहला बंच बनाएं
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                      <input
+                        type="text"
+                        value={bunchSearchQuery}
+                        onChange={(e) => setBunchSearchQuery(e.target.value)}
+                        placeholder="बंच के नाम से खोजें..."
+                        className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                      />
+                    </div>
+
+                    <div className="space-y-2 max-h-64 overflow-y-auto p-1">
+                      {filteredBunches.map(bunch => {
+                        const comp = bunchComposition(bunch.unitIds);
+                        const isSelected = selectedBunchId === bunch.id;
+                        return (
+                          <label
+                            key={bunch.id}
+                            onClick={(e) => { e.preventDefault(); setSelectedBunchId(bunch.id); }}
+                            className={`flex items-center justify-between gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-indigo-50/70 border-indigo-300 ring-1 ring-indigo-400/40'
+                                : 'bg-white border-slate-200 hover:bg-slate-100/60'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5 min-w-0">
+                              <input
+                                type="radio"
+                                checked={isSelected}
+                                onChange={() => {}}
+                                className="mt-0.5 text-indigo-600 pointer-events-none"
+                              />
+                              <div className="min-w-0">
+                                <span className="block text-xs font-bold text-slate-900 truncate">{bunch.name}</span>
+                                {bunch.description && (
+                                  <span className="block text-[11px] text-slate-500 truncate">{bunch.description}</span>
+                                )}
+                                <div className="flex items-center gap-2 mt-0.5 text-[10px] font-medium text-slate-500">
+                                  <span>{comp.jdCount} JD</span>
+                                  <span>•</span>
+                                  <span>{comp.itiCount} ITI</span>
+                                </div>
+                              </div>
+                            </div>
+                            <span className="text-xs font-bold text-indigo-700 shrink-0">{comp.total} इकाइयां</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Section 6: Data Collection Mode & Custom Fields / Google Integration */}
@@ -1372,40 +1565,6 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                     className="w-full text-xs px-3 py-2 bg-white border border-emerald-300 rounded-lg text-slate-900"
                   />
                 </div>
-              </div>
-            )}
-
-            {/* Google Form Config Section */}
-            {mode === 'GOOGLE_FORM' && (
-              <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-xl space-y-3">
-                <div className="flex items-center gap-2 text-blue-900 font-bold text-xs">
-                  <Link className="w-4 h-4 text-blue-700" />
-                  <span>गूगल फॉर्म कॉन्फ़िगरेशन</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-blue-900 mb-1">
-                    गूगल फॉर्म का यूआरएल (Google Form URL) *
-                  </label>
-                  <input
-                    type="url"
-                    value={googleFormUrl}
-                    onChange={(e) => setGoogleFormUrl(e.target.value)}
-                    placeholder="https://docs.google.com/forms/d/..."
-                    className="w-full text-xs px-3 py-2 bg-white border border-blue-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-mono"
-                    required={mode === 'GOOGLE_FORM'}
-                  />
-                </div>
-
-                <label className="flex items-center gap-2 text-xs font-medium text-blue-900">
-                  <input
-                    type="checkbox"
-                    checked={requireFormResponseId}
-                    onChange={(e) => setRequireFormResponseId(e.target.checked)}
-                    className="rounded border-blue-300"
-                  />
-                  इकाइयों से सबमिशन पावती/रेस्पॉन्स आईडी की पुष्टि अनिवार्य करें
-                </label>
               </div>
             )}
 
@@ -1742,6 +1901,21 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {showManageBunches && (
+        <ManageBunchesModal
+          isOpen={showManageBunches}
+          onClose={() => { setShowManageBunches(false); setBunchPrefillUnitIds(undefined); }}
+          fieldUnits={fieldUnits}
+          bunches={bunches}
+          activeDeskId={selectedDeskId}
+          activeDeskName={desks.find(d => d.id === selectedDeskId)?.name}
+          onSaveBunch={onSaveBunch}
+          onDeleteBunch={onDeleteBunch}
+          prefillUnitIds={bunchPrefillUnitIds}
+          onBunchCreatedFromPrefill={handleBunchCreatedFromPrefill}
+        />
       )}
 
     </div>
