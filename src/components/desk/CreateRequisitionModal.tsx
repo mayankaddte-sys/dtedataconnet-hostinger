@@ -459,6 +459,18 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
            it.zone.toLowerCase().includes(q);
   });
 
+  const filteredBunches = bunches.filter(b => {
+    if (!bunchSearchQuery.trim()) return true;
+    const q = bunchSearchQuery.toLowerCase();
+    return b.name.toLowerCase().includes(q) || (b.description || '').toLowerCase().includes(q);
+  });
+
+  const selectedBunch = bunches.find(b => b.id === selectedBunchId);
+  const bunchComposition = (unitIds: string[]) => {
+    const units = fieldUnits.filter(u => unitIds.includes(u.id));
+    return { jdCount: units.filter(u => u.type === 'JD_OFFICE').length, itiCount: units.filter(u => u.type === 'ITI').length, total: units.length };
+  };
+
   // Live count
   let currentEffectiveTargetCount = 0;
   if (targetScope === 'ALL_FIELD_UNITS') {
@@ -535,18 +547,6 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
     setTargetScope('SAVED_BUNCH');
     setShowManageBunches(false);
     setBunchPrefillUnitIds(undefined);
-  };
-
-  const filteredBunches = bunches.filter(b => {
-    if (!bunchSearchQuery.trim()) return true;
-    const q = bunchSearchQuery.toLowerCase();
-    return b.name.toLowerCase().includes(q) || (b.description || '').toLowerCase().includes(q);
-  });
-
-  const selectedBunch = bunches.find(b => b.id === selectedBunchId);
-  const bunchComposition = (unitIds: string[]) => {
-    const units = fieldUnits.filter(u => unitIds.includes(u.id));
-    return { jdCount: units.filter(u => u.type === 'JD_OFFICE').length, itiCount: units.filter(u => u.type === 'ITI').length, total: units.length };
   };
 
   return (
