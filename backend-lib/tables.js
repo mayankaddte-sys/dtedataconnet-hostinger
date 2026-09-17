@@ -18,5 +18,6 @@ export default {
   },
   submissions: { pk: 'id', json: ['data'] },
   extension_requests: { pk: 'id', json: [] },
-  defaulter_notices: { pk: 'id', json: [] }
+  defaulter_notices: { pk: 'id', json: [] },
+  field_unit_bunches: { pk: 'id', json: ['unit_ids'] }
 };
