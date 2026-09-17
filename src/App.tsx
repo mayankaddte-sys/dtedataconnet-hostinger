@@ -8,7 +8,8 @@ import {
   ExtensionRequest, 
   DefaulterNotice, 
   UserSession,
-  PortalNavMenu 
+  PortalNavMenu,
+  FieldUnitBunch 
 } from './types/portal';
 import { 
   getStoredDesks, 
@@ -24,7 +25,10 @@ import {
   getStoredUser, 
   saveCurrentUser, 
   deleteRequisition,
-  deleteSubmission
+  deleteSubmission,
+  getStoredBunches,
+  saveBunches,
+  deleteBunch
 } from './lib/storage';
 
 import { Header } from './components/layout/Header';
@@ -54,6 +58,7 @@ export default function App() {
   const [submissions, setSubmissions] = useState<SubmissionRecord[]>([]);
   const [extensions, setExtensions] = useState<ExtensionRequest[]>([]);
   const [defaulterNotices, setDefaulterNotices] = useState<DefaulterNotice[]>([]);
+  const [bunches, setBunches] = useState<FieldUnitBunch[]>([]);
   // No auto-login default anymore — null means "show the login page/modal".
   const [currentUser, setCurrentUser] = useState<UserSession | null>(() => getStoredUser());
   const [isDataLoaded, setIsDataLoaded] = useState<boolean>(false);
@@ -89,13 +94,14 @@ export default function App() {
 
     (async () => {
       try {
-        const [d, fu, req, sub, ext, notices] = await Promise.all([
+        const [d, fu, req, sub, ext, notices, bnc] = await Promise.all([
           getStoredDesks(),
           getStoredFieldUnits(),
           getStoredRequisitions(),
           getStoredSubmissions(),
           getStoredExtensions(),
-          getStoredDefaulterNotices()
+          getStoredDefaulterNotices(),
+          getStoredBunches()
         ]);
 
         if (cancelled) return;
@@ -106,6 +112,7 @@ export default function App() {
         setSubmissions(sub);
         setExtensions(ext);
         setDefaulterNotices(notices);
+        setBunches(bnc);
         setIsDataLoaded(true);
       } catch (e) {
         console.error('Failed to load initial data from Supabase', e);
@@ -173,6 +180,13 @@ export default function App() {
     saveDefaulterNotices(defaulterNotices).catch(e => console.error(e));
   }, [defaulterNotices, isDataLoaded]);
 
+  const didMountBunches = useRef(false);
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    if (!didMountBunches.current) { didMountBunches.current = true; return; }
+    saveBunches(bunches).catch(e => console.error(e));
+  }, [bunches, isDataLoaded]);
+
   // Current user session — this stays a lightweight local/session value
   // (see storage.ts), not a Supabase table, so this can remain synchronous.
   useEffect(() => {
@@ -234,6 +248,28 @@ export default function App() {
         console.error(`New requisition email: ${result.failedCount} of ${result.sentCount + result.failedCount} failed to send`);
       }
     }).catch(e => console.error('Failed to dispatch new requisition emails', e));
+  };
+
+  // Create or update a reusable field-unit bunch (upsert by id — the
+  // ManageBunches editor sets a fresh id for new bunches, keeps the
+  // existing one for edits).
+  const handleSaveBunch = (bunch: FieldUnitBunch) => {
+    setBunches(prev => {
+      const exists = prev.some(b => b.id === bunch.id);
+      return exists ? prev.map(b => (b.id === bunch.id ? bunch : b)) : [bunch, ...prev];
+    });
+  };
+
+  const handleDeleteBunch = (bunchId: string) => {
+    setBunches(prev => prev.filter(b => b.id !== bunchId));
+
+    // Local state above only updates this browser's view — the bunches
+    // "sync" effect only ever upserts, so without this explicit call the
+    // row would stay in the database forever (same reasoning as
+    // deleteRequisition below).
+    deleteBunch(bunchId).catch(e =>
+      console.error('Failed to delete field unit bunch', e)
+    );
   };
 
   // A JD office relays a requisition it received (targeted at the JD, not
@@ -841,6 +877,9 @@ export default function App() {
         fieldUnits={fieldUnits}
         activeDeskId={currentUser.deskId}
         onSaveRequisition={handleSaveRequisition}
+        bunches={bunches}
+        onSaveBunch={handleSaveBunch}
+        onDeleteBunch={handleDeleteBunch}
       />
 
       {/* 4. Field Unit Data Submission Modal */}
