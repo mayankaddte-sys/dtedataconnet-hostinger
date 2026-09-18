@@ -90,8 +90,16 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
   // Requisitions assigned to this specific field unit
   const assignedRequisitions = requisitions.filter(r => r.targetUnitIds.includes(fieldUnit.id));
 
-  // Field unit specific notices
-  const unitNotices = defaulterNotices.filter(n => n.fieldUnitId === fieldUnit.id);
+  // Field unit specific notices — only ones still "live": if the unit has
+  // since submitted (and it wasn't sent back for revision), the notice
+  // that nagged them to reply no longer belongs on their dashboard. Uses
+  // `submissions` directly (not unitSubmissions, declared just below) so
+  // this doesn't depend on declaration order.
+  const unitNotices = defaulterNotices.filter(n => {
+    if (n.fieldUnitId !== fieldUnit.id) return false;
+    const sub = submissions.find(s => s.requisitionId === n.requisitionId && s.fieldUnitId === fieldUnit.id);
+    return !sub || sub.status === 'REVISION_REQUESTED';
+  });
 
   // Submissions made by this unit
   const unitSubmissions = submissions.filter(s => s.fieldUnitId === fieldUnit.id);
