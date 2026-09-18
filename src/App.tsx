@@ -15,9 +15,9 @@ import {
   getStoredDesks, 
   getStoredFieldUnits, 
   getStoredRequisitions, 
-  saveRequisitions, 
+  upsertRequisition, 
   getStoredSubmissions, 
-  saveSubmissions, 
+  upsertSubmission, 
   getStoredExtensions, 
   saveExtensions, 
   getStoredDefaulterNotices, 
@@ -152,19 +152,25 @@ export default function App() {
      the empty arrays the state starts as before the initial fetch
      resolves.
      =================================================================== */
-  const didMountRequisitions = useRef(false);
-  useEffect(() => {
-    if (!isDataLoaded) return;
-    if (!didMountRequisitions.current) { didMountRequisitions.current = true; return; }
-    saveRequisitions(requisitions).catch(e => console.error(e));
-  }, [requisitions, isDataLoaded]);
+  // NOTE: like submissions below, requisitions are NOT synced via a
+  // whole-array effect either. A requisition can carry a base64-encoded
+  // attached order/circular image or PDF (orderDocumentUrl/performaFileUrl)
+  // several MB in size, and re-sending every requisition's full payload on
+  // every single requisition change grows unbounded — it eventually
+  // exceeds the server's JSON body limit and/or MySQL's max_allowed_packet,
+  // silently failing (this was previously causing desks to see requisitions
+  // save successfully but their attached order-document image come back
+  // corrupted/missing when reopened). See handleSaveRequisition /
+  // handleForwardRequisitionToItis / handleSendDefaulterNotice /
+  // handleGrantExtension below, which each upsert exactly one record.
 
-  const didMountSubmissions = useRef(false);
-  useEffect(() => {
-    if (!isDataLoaded) return;
-    if (!didMountSubmissions.current) { didMountSubmissions.current = true; return; }
-    saveSubmissions(submissions).catch(e => console.error(e));
-  }, [submissions, isDataLoaded]);
+  // NOTE: submissions are deliberately NOT synced via a whole-array effect
+  // like the other collections below. Each submission can carry a base64
+  // letter/signature several MB in size, and re-sending every submission's
+  // full payload on every single new submission grows unbounded — it
+  // eventually exceeds the server's JSON body limit and/or MySQL's
+  // max_allowed_packet, silently failing (see handleFieldSubmit /
+  // handleUpdateSubmissionStatus, which upsert exactly one record instead).
 
   const didMountExtensions = useRef(false);
   useEffect(() => {
@@ -240,6 +246,10 @@ export default function App() {
     setSelectedRequisition(newReq);
     setActiveMenu('REQUISITIONS');
 
+    upsertRequisition(newReq).catch(e =>
+      console.error('Failed to save requisition to backend', e)
+    );
+
     // Fire-and-forget: notify every targeted field unit by email that a new
     // demand has been issued. Doesn't block the UI on email delivery.
     const senderDesk = desks.find(d => d.id === newReq.deskId);
@@ -309,6 +319,10 @@ export default function App() {
       setSelectedRequisition(updatedReq);
     }
 
+    upsertRequisition(updatedReq).catch(e =>
+      console.error('Failed to save forwarded requisition to backend', e)
+    );
+
     // Notify exactly the newly forwarded ITIs (not re-derived from scope —
     // see the comment on dispatchNewRequisitionEmails for why that matters).
     const newlyTargetedUnits = fieldUnits.filter(u => newUnitIds.includes(u.id));
@@ -323,19 +337,29 @@ export default function App() {
     status: 'APPROVED' | 'REVISION_REQUESTED', 
     comments?: string
   ) => {
+    let savedSub: SubmissionRecord | undefined;
     const updated = submissions.map(sub => {
       if (sub.id === submissionId) {
-        return {
+        savedSub = {
           ...sub,
           status,
           deskComments: comments || sub.deskComments,
           deskReviewedAt: new Date().toISOString(),
           deskReviewedBy: currentUser?.displayName || ''
         };
+        return savedSub;
       }
       return sub;
     });
     setSubmissions(updated);
+
+    // Upsert just this one record — see the note above the (removed)
+    // whole-array submissions effect for why.
+    if (savedSub) {
+      upsertSubmission(savedSub).catch(e =>
+        console.error('Failed to save submission review to backend', e)
+      );
+    }
   };
 
   const handleFieldSubmit = (subData: Partial<SubmissionRecord>) => {
@@ -344,19 +368,32 @@ export default function App() {
     );
 
     let updated: SubmissionRecord[];
+    let savedSub: SubmissionRecord;
     if (existingIndex >= 0) {
-      updated = [...submissions];
-      updated[existingIndex] = {
-        ...updated[existingIndex],
+      savedSub = {
+        ...submissions[existingIndex],
         ...subData,
         submittedAt: new Date().toISOString(),
         status: 'SUBMITTED'
       } as SubmissionRecord;
+      updated = [...submissions];
+      updated[existingIndex] = savedSub;
     } else {
-      updated = [subData as SubmissionRecord, ...submissions];
+      savedSub = subData as SubmissionRecord;
+      updated = [savedSub, ...submissions];
     }
 
     setSubmissions(updated);
+
+    // Upsert just this one record — see the note above the (removed)
+    // whole-array submissions effect for why. This is the fix for letters/
+    // signatures failing to actually reach the backend: previously every
+    // submission (all of their base64 files) got re-sent on every single
+    // new submission, and that combined payload eventually exceeded the
+    // server's request-size limit, so nothing after that point ever saved.
+    upsertSubmission(savedSub).catch(e =>
+      console.error('Failed to save submission to backend', e)
+    );
   };
 
   const handleSendDefaulterNotice = async (unitIds: string[], subject: string, message: string, reqId?: string) => {
@@ -376,23 +413,31 @@ export default function App() {
     // 1. SAVE FIRST, independent of email outcome. The notice record and
     // the requisition's autoRemindersSent count are the "demand" being
     // saved — this must never be blocked, delayed, or rolled back by
-    // however long (or how badly) the outgoing email batch goes. Both
-    // setters below trigger their own persistence useEffect
-    // (saveDefaulterNotices / saveRequisitions) immediately, with no
-    // dependency on email delivery at all.
+    // however long (or how badly) the outgoing email batch goes. The
+    // notice persists via its own sync effect (saveDefaulterNotices); the
+    // requisition's bumped count persists via a direct upsertRequisition
+    // call just below. Neither depends on email delivery at all.
     setDefaulterNotices([...newNotices, ...defaulterNotices]);
 
     if (targetReq) {
+      let bumpedReq: Requisition | undefined;
       const updatedReqs = requisitions.map(r => {
         if (r.id === targetReq.id) {
-          return {
+          bumpedReq = {
             ...r,
             autoRemindersSent: (r.autoRemindersSent || 0) + 1
           };
+          return bumpedReq;
         }
         return r;
       });
       setRequisitions(updatedReqs);
+
+      if (bumpedReq) {
+        upsertRequisition(bumpedReq).catch(e =>
+          console.error('Failed to save requisition reminder count to backend', e)
+        );
+      }
     }
 
     // 2. Email delivery is now a pure best-effort side effect. It runs
@@ -420,18 +465,26 @@ export default function App() {
   };
 
   const handleGrantExtension = (requisitionId: string, unitId: string | 'ALL', newDeadline: string) => {
+    let extendedReq: Requisition | undefined;
     const updatedReqs = requisitions.map(r => {
       if (r.id === requisitionId) {
-        return {
+        extendedReq = {
           ...r,
           deadline: newDeadline
         };
+        return extendedReq;
       }
       return r;
     });
     setRequisitions(updatedReqs);
     if (selectedRequisition && selectedRequisition.id === requisitionId) {
       setSelectedRequisition({ ...selectedRequisition, deadline: newDeadline });
+    }
+
+    if (extendedReq) {
+      upsertRequisition(extendedReq).catch(e =>
+        console.error('Failed to save extended deadline to backend', e)
+      );
     }
   };
 
