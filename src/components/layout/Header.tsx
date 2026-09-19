@@ -21,6 +21,7 @@ import {
   Clock, 
   BellRing, 
   BookOpen, 
+  FolderOpen,
   TrendingUp, 
   Menu, 
   X,
@@ -192,6 +193,11 @@ export const Header: React.FC<HeaderProps> = ({
       id: 'DIRECTORY',
       label: 'इकाई निर्देशिका',
       icon: <BookOpen className="w-4 h-4" />
+    },
+    {
+      id: 'REPOSITORY',
+      label: 'दस्तावेज़ भंडार',
+      icon: <FolderOpen className="w-4 h-4" />
     },
     ...(isDirectorAdmin ? [{
       id: 'DIRECTOR_VIEW' as PortalNavMenu,
