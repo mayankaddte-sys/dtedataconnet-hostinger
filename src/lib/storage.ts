@@ -283,7 +283,7 @@ export const getStoredDesks = async (): Promise<DirectorateDesk[]> => {
   const { data, error } = await supabase.from('directorate_desks').select('*');
   if (error) {
     console.error('Failed to fetch desks', error);
-    throw new Error(`desks: ${error.message}`);
+    throw new Error(error.message || 'Failed to fetch desks');
   }
   return (data ?? []).map(toDesk);
 };
@@ -292,7 +292,7 @@ export const getStoredFieldUnits = async (): Promise<FieldUnit[]> => {
   const { data, error } = await supabase.from('field_units').select('*');
   if (error) {
     console.error('Failed to fetch field units', error);
-    throw new Error(`field_units: ${error.message}`);
+    throw new Error(error.message || 'Failed to fetch field units');
   }
   return (data ?? []).map(toFieldUnit);
 };
@@ -308,7 +308,7 @@ export const getStoredRequisitions = async (): Promise<Requisition[]> => {
     .order('created_at', { ascending: false });
   if (error) {
     console.error('Failed to fetch requisitions', error);
-    throw new Error(`requisitions: ${error.message}`);
+    throw new Error(error.message || 'Failed to fetch requisitions');
   }
   return (data ?? []).map(toRequisition);
 };
@@ -353,16 +353,63 @@ export const deleteRequisition = async (requisitionId: string): Promise<void> =>
    SUBMISSIONS
    ========================================================================= */
 
+// Initial dashboard load deliberately excludes the large LONGTEXT file fields.
+// The 227 current submissions contain ~110 MB in uploaded_document_url, so
+// selecting those fields on every page load can make the API exceed the timeout.
+const SUBMISSION_LIST_COLUMNS = [
+  'id',
+  'requisition_id',
+  'field_unit_id',
+  'field_unit_name',
+  'field_unit_type',
+  'field_unit_zone',
+  'field_unit_district',
+  'submitted_at',
+  'submitted_by_officer',
+  'officer_designation',
+  'officer_contact',
+  'status',
+  'is_late',
+  'late_justification',
+  'data',
+  'google_sheet_submitted_url',
+  'google_form_response_id',
+  'uploaded_document_name',
+  'signed_letter_dispatch_number',
+  'signed_letter_date',
+  'signature_type',
+  'performa_submission_file_name',
+  'desk_reviewed_at',
+  'desk_reviewed_by',
+  'desk_comments',
+  'revision_notes'
+].join(',');
+
 export const getStoredSubmissions = async (): Promise<SubmissionRecord[]> => {
   const { data, error } = await supabase
     .from('submissions')
-    .select('*')
+    .select(SUBMISSION_LIST_COLUMNS)
     .order('submitted_at', { ascending: false });
   if (error) {
     console.error('Failed to fetch submissions', error);
-    throw new Error(`submissions: ${error.message}`);
+    throw new Error(error.message || 'Failed to fetch submissions');
   }
   return (data ?? []).map(toSubmission);
+};
+
+// Fetch one complete submission only when a user opens its detail/preview.
+// This includes the potentially large document/signature fields.
+export const getStoredSubmissionById = async (submissionId: string): Promise<SubmissionRecord | null> => {
+  const { data, error } = await supabase
+    .from('submissions')
+    .select('*')
+    .eq('id', submissionId);
+  if (error) {
+    console.error('Failed to fetch submission details', error);
+    throw new Error(error.message || 'Failed to fetch submission details');
+  }
+  const row = Array.isArray(data) ? data[0] : null;
+  return row ? toSubmission(row) : null;
 };
 
 export const saveSubmissions = async (submissions: SubmissionRecord[]): Promise<void> => {
@@ -397,7 +444,7 @@ export const getStoredExtensions = async (): Promise<ExtensionRequest[]> => {
     .order('created_at', { ascending: false });
   if (error) {
     console.error('Failed to fetch extension requests', error);
-    throw new Error(`extension_requests: ${error.message}`);
+    throw new Error(error.message || 'Failed to fetch extension requests');
   }
   return (data ?? []).map(toExtension);
 };
@@ -427,7 +474,7 @@ export const getStoredDefaulterNotices = async (): Promise<DefaulterNotice[]> =>
     .order('sent_at', { ascending: false });
   if (error) {
     console.error('Failed to fetch defaulter notices', error);
-    throw new Error(`defaulter_notices: ${error.message}`);
+    throw new Error(error.message || 'Failed to fetch defaulter notices');
   }
   return (data ?? []).map(toNotice);
 };
@@ -451,7 +498,7 @@ export const getStoredBunches = async (): Promise<FieldUnitBunch[]> => {
     .order('created_at', { ascending: false });
   if (error) {
     console.error('Failed to fetch field unit bunches', error);
-    throw new Error(`field_unit_bunches: ${error.message}`);
+    throw new Error(error.message || 'Failed to fetch field unit bunches');
   }
   return (data ?? []).map(toBunch);
 };
@@ -498,7 +545,7 @@ export const getStoredRepositoryFiles = async (): Promise<RepositoryFile[]> => {
     .order('uploaded_at', { ascending: false });
   if (error) {
     console.error('Failed to fetch repository files', error);
-    throw new Error(`desk_repository_files: ${error.message}`);
+    throw new Error(error.message || 'Failed to fetch repository files');
   }
   return (data ?? []).map(toRepositoryFile);
 };
