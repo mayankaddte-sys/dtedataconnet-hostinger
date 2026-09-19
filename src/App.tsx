@@ -93,87 +93,66 @@ export default function App() {
   const [submittingExistingRecord, setSubmittingExistingRecord] = useState<SubmissionRecord | undefined>(undefined);
 
   /* ===================================================================
-     INITIAL LOAD — fetch each dataset independently.
-
-     IMPORTANT: A timeout/error must NEVER be converted into [] because []
-     means "the database really contains zero records". The old loader
-     did exactly that, which is why a slow Hostinger/API response appeared
-     in the dashboard as 0 records even though MySQL still contained the
-     data.
+     INITIAL LOAD — fetch everything from Supabase once on mount.
      =================================================================== */
+  // Guards each individual fetch in the initial load below: if one table's
+  // request hangs or is slow to fail (e.g. its migration hasn't been run
+  // on the server yet), it now times out and falls back to an empty list
+  // instead of holding up every other table too — this is what caused the
+  // whole app to sit on "लोड हो रहा है..." when just one table was missing.
+  // Keep a failed/slow request distinguishable from a genuinely empty table.
+  // A previous 8-second fallback returned [], which made a temporary API delay
+  // look like zero records.
   const withLoadTimeout = <T,>(promise: Promise<T>, label: string, ms = 30000): Promise<T> =>
     Promise.race([
       promise,
       new Promise<T>((_, reject) =>
-        setTimeout(() => {
-          reject(new Error(`${label} timed out after ${ms / 1000}s`));
-        }, ms)
+        setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms)
       )
     ]);
 
   useEffect(() => {
     let cancelled = false;
 
-    const loadInitialData = async () => {
-      const jobs: Array<{
-        label: string;
-        load: () => Promise<any[]>;
-      }> = [
-        { label: 'desks', load: getStoredDesks },
-        { label: 'field units', load: getStoredFieldUnits },
-        { label: 'requisitions', load: getStoredRequisitions },
-        { label: 'submissions', load: getStoredSubmissions },
-        { label: 'extensions', load: getStoredExtensions },
-        { label: 'defaulter notices', load: getStoredDefaulterNotices },
-        { label: 'field unit bunches', load: getStoredBunches },
-        { label: 'repository files', load: getStoredRepositoryFiles }
-      ];
-
-      const results = await Promise.allSettled(
-        jobs.map(({ label, load }) => withLoadTimeout(load(), label))
-      );
+    (async () => {
+      const results = await Promise.allSettled([
+        withLoadTimeout(getStoredDesks(), 'desks'),
+        withLoadTimeout(getStoredFieldUnits(), 'field units'),
+        withLoadTimeout(getStoredRequisitions(), 'requisitions'),
+        withLoadTimeout(getStoredSubmissions(), 'submissions'),
+        withLoadTimeout(getStoredExtensions(), 'extensions'),
+        withLoadTimeout(getStoredDefaulterNotices(), 'defaulter notices'),
+        withLoadTimeout(getStoredBunches(), 'field unit bunches'),
+        withLoadTimeout(getStoredRepositoryFiles(), 'repository files')
+      ]);
 
       if (cancelled) return;
 
-      const failures: string[] = [];
+      const [d, fu, req, sub, ext, notices, bnc, repo] = results;
+      const failed: string[] = [];
+      const valueOr = <T,>(result: PromiseSettledResult<T>, label: string, fallback: T): T => {
+        if (result.status === 'fulfilled') return result.value;
+        console.error(`Failed to load ${label}:`, result.reason);
+        failed.push(label);
+        return fallback;
+      };
 
-      results.forEach((result, index) => {
-        const label = jobs[index].label;
-        if (result.status === 'fulfilled') {
-          switch (index) {
-            case 0: setDesks(result.value); break;
-            case 1: setFieldUnits(result.value); break;
-            case 2: setRequisitions(result.value); break;
-            case 3: setSubmissions(result.value); break;
-            case 4: setExtensions(result.value); break;
-            case 5: setDefaulterNotices(result.value); break;
-            case 6: setBunches(result.value); break;
-            case 7: setRepositoryFiles(result.value); break;
-          }
-        } else {
-          console.error(`Failed to load ${label}:`, result.reason);
-          failures.push(label);
-        }
-      });
+      setDesks(valueOr(d, 'desks', []));
+      setFieldUnits(valueOr(fu, 'field units', []));
+      setRequisitions(valueOr(req, 'requisitions', []));
+      setSubmissions(valueOr(sub, 'submissions', []));
+      setExtensions(valueOr(ext, 'extensions', []));
+      setDefaulterNotices(valueOr(notices, 'defaulter notices', []));
+      setBunches(valueOr(bnc, 'field unit bunches', []));
+      setRepositoryFiles(valueOr(repo, 'repository files', []));
 
-      if (failures.length > 0) {
-        setLoadError(
-          `कुछ डेटा लोड नहीं हो सका: ${failures.join(', ')}. उपलब्ध डेटा सामान्य रूप से प्रदर्शित किया जा रहा है।`
-        );
+      if (failed.length > 0) {
+        setLoadError(`कुछ डेटा लोड नहीं हो सका: ${failed.join(', ')}. अन्य उपलब्ध डेटा प्रदर्शित किया जा रहा है।`);
       } else {
         setLoadError(null);
       }
-
       setIsDataLoaded(true);
-    };
-
-    loadInitialData().catch((error) => {
-      console.error('Unexpected initial data loading error:', error);
-      if (!cancelled) {
-        setLoadError('डेटा लोड करने में समस्या हुई। कृपया पुनः प्रयास करें।');
-        setIsDataLoaded(true);
-      }
-    });
+    })();
 
     return () => {
       cancelled = true;
