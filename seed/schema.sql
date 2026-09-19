@@ -209,4 +209,31 @@ CREATE TABLE IF NOT EXISTS field_unit_bunches (
         ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ------------------------------------------------------------
+-- 9. desk_repository_files
+-- Each directorate desk's own document repository (circulars, formats,
+-- policy orders, etc.), organized under a free-text category. Visible to
+-- every desk and field unit for browsing/download; only the owning desk
+-- (or the Directorate admin) can upload/delete into it — see
+-- src/components/views/RepositoryView.tsx.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS desk_repository_files (
+    id                  VARCHAR(50)   NOT NULL PRIMARY KEY,
+    desk_id             VARCHAR(50)   NOT NULL,
+    desk_name           VARCHAR(500)  DEFAULT NULL,
+    category            VARCHAR(200)  NOT NULL,
+    title               VARCHAR(500)  NOT NULL,
+    description         TEXT          DEFAULT NULL,
+    file_name           VARCHAR(500)  DEFAULT NULL,
+    file_url            LONGTEXT      DEFAULT NULL,
+    file_size           BIGINT        DEFAULT NULL,
+    file_type           VARCHAR(150)  DEFAULT NULL,
+    uploaded_by_name    VARCHAR(300)  DEFAULT NULL,
+    uploaded_at         DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_repo_desk (desk_id),
+    KEY idx_repo_category (category),
+    CONSTRAINT fk_repo_desk FOREIGN KEY (desk_id) REFERENCES directorate_desks(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;
