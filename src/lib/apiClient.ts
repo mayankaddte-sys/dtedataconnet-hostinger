@@ -4,7 +4,7 @@
  * / emailReminderEngine.ts:
  *
  *   supabase.from(table).select('*')
- *   supabase.from(table).select('*').order(col, { ascending })
+ *   supabase.from(table).select('id,name').order(col, { ascending })
  *   supabase.from(table).upsert(rows, { onConflict: 'id' })
  *   supabase.from(table).delete().eq(col, val)
  *   supabase.from(table).delete().neq(col, val)
@@ -68,13 +68,15 @@ class QueryBuilder {
   private filters: Filter[] = [];
   private orderCol?: string;
   private orderAsc = true;
+  private selectCols = '*';
 
   constructor(table: string) {
     this.table = table;
   }
 
-  select(_cols: string = '*') {
+  select(cols: string = '*') {
     this.op = 'select';
+    this.selectCols = cols;
     return this;
   }
 
@@ -107,6 +109,9 @@ class QueryBuilder {
 
   private buildQuery(): string {
     const params = new URLSearchParams();
+    if (this.op === 'select' && this.selectCols) {
+      params.append('select', this.selectCols);
+    }
     this.filters.forEach((f) => params.append(f.col, `${f.type}.${f.val}`));
     if (this.orderCol) {
       params.append('order', `${this.orderCol}.${this.orderAsc ? 'asc' : 'desc'}`);
