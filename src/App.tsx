@@ -9,7 +9,8 @@ import {
   DefaulterNotice, 
   UserSession,
   PortalNavMenu,
-  FieldUnitBunch 
+  FieldUnitBunch,
+  RepositoryFile 
 } from './types/portal';
 import { 
   getStoredDesks, 
@@ -28,7 +29,10 @@ import {
   deleteSubmission,
   getStoredBunches,
   saveBunches,
-  deleteBunch
+  deleteBunch,
+  getStoredRepositoryFiles,
+  upsertRepositoryFile,
+  deleteRepositoryFile
 } from './lib/storage';
 
 import { Header } from './components/layout/Header';
@@ -45,6 +49,7 @@ import { SubmissionsReportView } from './components/views/SubmissionsReportView'
 import { ExtensionsView } from './components/views/ExtensionsView';
 import { NoticesView } from './components/views/NoticesView';
 import { DirectoryView } from './components/views/DirectoryView';
+import { RepositoryView } from './components/views/RepositoryView';
 import { ChangePasswordModal } from './components/auth/ChangePasswordModal';
 import { AutoEmailMonitorModal } from './components/modals/AutoEmailMonitorModal';
 import { ReminderDispatchSuccessModal } from './components/modals/ReminderDispatchSuccessModal';
@@ -59,6 +64,7 @@ export default function App() {
   const [extensions, setExtensions] = useState<ExtensionRequest[]>([]);
   const [defaulterNotices, setDefaulterNotices] = useState<DefaulterNotice[]>([]);
   const [bunches, setBunches] = useState<FieldUnitBunch[]>([]);
+  const [repositoryFiles, setRepositoryFiles] = useState<RepositoryFile[]>([]);
   // No auto-login default anymore — null means "show the login page/modal".
   const [currentUser, setCurrentUser] = useState<UserSession | null>(() => getStoredUser());
   const [isDataLoaded, setIsDataLoaded] = useState<boolean>(false);
@@ -89,19 +95,34 @@ export default function App() {
   /* ===================================================================
      INITIAL LOAD — fetch everything from Supabase once on mount.
      =================================================================== */
+  // Guards each individual fetch in the initial load below: if one table's
+  // request hangs or is slow to fail (e.g. its migration hasn't been run
+  // on the server yet), it now times out and falls back to an empty list
+  // instead of holding up every other table too — this is what caused the
+  // whole app to sit on "लोड हो रहा है..." when just one table was missing.
+  const withLoadTimeout = <T,>(promise: Promise<T>, fallback: T, label: string, ms = 8000): Promise<T> =>
+    Promise.race([
+      promise,
+      new Promise<T>(resolve => setTimeout(() => {
+        console.error(`Timed out loading ${label} after ${ms}ms — continuing without it`);
+        resolve(fallback);
+      }, ms))
+    ]);
+
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const [d, fu, req, sub, ext, notices, bnc] = await Promise.all([
-          getStoredDesks(),
-          getStoredFieldUnits(),
-          getStoredRequisitions(),
-          getStoredSubmissions(),
-          getStoredExtensions(),
-          getStoredDefaulterNotices(),
-          getStoredBunches()
+        const [d, fu, req, sub, ext, notices, bnc, repo] = await Promise.all([
+          withLoadTimeout(getStoredDesks(), [], 'desks'),
+          withLoadTimeout(getStoredFieldUnits(), [], 'field units'),
+          withLoadTimeout(getStoredRequisitions(), [], 'requisitions'),
+          withLoadTimeout(getStoredSubmissions(), [], 'submissions'),
+          withLoadTimeout(getStoredExtensions(), [], 'extensions'),
+          withLoadTimeout(getStoredDefaulterNotices(), [], 'defaulter notices'),
+          withLoadTimeout(getStoredBunches(), [], 'field unit bunches'),
+          withLoadTimeout(getStoredRepositoryFiles(), [], 'repository files')
         ]);
 
         if (cancelled) return;
@@ -113,6 +134,7 @@ export default function App() {
         setExtensions(ext);
         setDefaulterNotices(notices);
         setBunches(bnc);
+        setRepositoryFiles(repo);
         setIsDataLoaded(true);
       } catch (e) {
         console.error('Failed to load initial data from Supabase', e);
@@ -279,6 +301,26 @@ export default function App() {
     // deleteRequisition below).
     deleteBunch(bunchId).catch(e =>
       console.error('Failed to delete field unit bunch', e)
+    );
+  };
+
+  // Add (or, in principle, edit) a file in a desk's document repository.
+  // Single-record upsert only — see the note in storage.ts on why this
+  // table deliberately has no whole-array sync function.
+  const handleSaveRepositoryFile = (file: RepositoryFile) => {
+    setRepositoryFiles(prev => {
+      const exists = prev.some(f => f.id === file.id);
+      return exists ? prev.map(f => (f.id === file.id ? file : f)) : [file, ...prev];
+    });
+    upsertRepositoryFile(file).catch(e =>
+      console.error('Failed to save repository file to backend', e)
+    );
+  };
+
+  const handleDeleteRepositoryFile = (fileId: string) => {
+    setRepositoryFiles(prev => prev.filter(f => f.id !== fileId));
+    deleteRepositoryFile(fileId).catch(e =>
+      console.error('Failed to delete repository file', e)
     );
   };
 
@@ -831,6 +873,18 @@ export default function App() {
               <DirectoryView
                 desks={desks}
                 fieldUnits={fieldUnits}
+              />
+            )}
+
+            {/* MENU TAB: REPOSITORY */}
+            {activeMenu === 'REPOSITORY' && (
+              <RepositoryView
+                repositoryFiles={repositoryFiles}
+                desks={desks}
+                fieldUnits={fieldUnits}
+                currentUser={currentUser}
+                onSaveFile={handleSaveRepositoryFile}
+                onDeleteFile={handleDeleteRepositoryFile}
               />
             )}
 
