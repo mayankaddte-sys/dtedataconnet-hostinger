@@ -93,57 +93,87 @@ export default function App() {
   const [submittingExistingRecord, setSubmittingExistingRecord] = useState<SubmissionRecord | undefined>(undefined);
 
   /* ===================================================================
-     INITIAL LOAD — fetch everything from Supabase once on mount.
+     INITIAL LOAD — fetch each dataset independently.
+
+     IMPORTANT: A timeout/error must NEVER be converted into [] because []
+     means "the database really contains zero records". The old loader
+     did exactly that, which is why a slow Hostinger/API response appeared
+     in the dashboard as 0 records even though MySQL still contained the
+     data.
      =================================================================== */
-  // Guards each individual fetch in the initial load below: if one table's
-  // request hangs or is slow to fail (e.g. its migration hasn't been run
-  // on the server yet), it now times out and falls back to an empty list
-  // instead of holding up every other table too — this is what caused the
-  // whole app to sit on "लोड हो रहा है..." when just one table was missing.
-  const withLoadTimeout = <T,>(promise: Promise<T>, fallback: T, label: string, ms = 8000): Promise<T> =>
+  const withLoadTimeout = <T,>(promise: Promise<T>, label: string, ms = 30000): Promise<T> =>
     Promise.race([
       promise,
-      new Promise<T>(resolve => setTimeout(() => {
-        console.error(`Timed out loading ${label} after ${ms}ms — continuing without it`);
-        resolve(fallback);
-      }, ms))
+      new Promise<T>((_, reject) =>
+        setTimeout(() => {
+          reject(new Error(`${label} timed out after ${ms / 1000}s`));
+        }, ms)
+      )
     ]);
 
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
-      try {
-        const [d, fu, req, sub, ext, notices, bnc, repo] = await Promise.all([
-          withLoadTimeout(getStoredDesks(), [], 'desks'),
-          withLoadTimeout(getStoredFieldUnits(), [], 'field units'),
-          withLoadTimeout(getStoredRequisitions(), [], 'requisitions'),
-          withLoadTimeout(getStoredSubmissions(), [], 'submissions'),
-          withLoadTimeout(getStoredExtensions(), [], 'extensions'),
-          withLoadTimeout(getStoredDefaulterNotices(), [], 'defaulter notices'),
-          withLoadTimeout(getStoredBunches(), [], 'field unit bunches'),
-          withLoadTimeout(getStoredRepositoryFiles(), [], 'repository files')
-        ]);
+    const loadInitialData = async () => {
+      const jobs: Array<{
+        label: string;
+        load: () => Promise<any[]>;
+      }> = [
+        { label: 'desks', load: getStoredDesks },
+        { label: 'field units', load: getStoredFieldUnits },
+        { label: 'requisitions', load: getStoredRequisitions },
+        { label: 'submissions', load: getStoredSubmissions },
+        { label: 'extensions', load: getStoredExtensions },
+        { label: 'defaulter notices', load: getStoredDefaulterNotices },
+        { label: 'field unit bunches', load: getStoredBunches },
+        { label: 'repository files', load: getStoredRepositoryFiles }
+      ];
 
-        if (cancelled) return;
+      const results = await Promise.allSettled(
+        jobs.map(({ label, load }) => withLoadTimeout(load(), label))
+      );
 
-        setDesks(d);
-        setFieldUnits(fu);
-        setRequisitions(req);
-        setSubmissions(sub);
-        setExtensions(ext);
-        setDefaulterNotices(notices);
-        setBunches(bnc);
-        setRepositoryFiles(repo);
-        setIsDataLoaded(true);
-      } catch (e) {
-        console.error('Failed to load initial data from Supabase', e);
-        if (!cancelled) {
-          setLoadError('डेटा लोड करने में समस्या हुई। कृपया पुनः प्रयास करें।');
-          setIsDataLoaded(true); // allow UI to render even on failure
+      if (cancelled) return;
+
+      const failures: string[] = [];
+
+      results.forEach((result, index) => {
+        const label = jobs[index].label;
+        if (result.status === 'fulfilled') {
+          switch (index) {
+            case 0: setDesks(result.value); break;
+            case 1: setFieldUnits(result.value); break;
+            case 2: setRequisitions(result.value); break;
+            case 3: setSubmissions(result.value); break;
+            case 4: setExtensions(result.value); break;
+            case 5: setDefaulterNotices(result.value); break;
+            case 6: setBunches(result.value); break;
+            case 7: setRepositoryFiles(result.value); break;
+          }
+        } else {
+          console.error(`Failed to load ${label}:`, result.reason);
+          failures.push(label);
         }
+      });
+
+      if (failures.length > 0) {
+        setLoadError(
+          `कुछ डेटा लोड नहीं हो सका: ${failures.join(', ')}. उपलब्ध डेटा सामान्य रूप से प्रदर्शित किया जा रहा है।`
+        );
+      } else {
+        setLoadError(null);
       }
-    })();
+
+      setIsDataLoaded(true);
+    };
+
+    loadInitialData().catch((error) => {
+      console.error('Unexpected initial data loading error:', error);
+      if (!cancelled) {
+        setLoadError('डेटा लोड करने में समस्या हुई। कृपया पुनः प्रयास करें।');
+        setIsDataLoaded(true);
+      }
+    });
 
     return () => {
       cancelled = true;
