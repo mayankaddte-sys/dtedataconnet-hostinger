@@ -7,7 +7,8 @@ import {
   ExtensionRequest,
   DefaulterNotice,
   UserSession,
-  FieldUnitBunch
+  FieldUnitBunch,
+  RepositoryFile
 } from '../types/portal';
 
 /* =========================================================================
@@ -245,6 +246,35 @@ const fromBunch = (b: FieldUnitBunch) => ({
   created_by_desk_name: b.createdByDeskName ?? null
 });
 
+const toRepositoryFile = (r: any): RepositoryFile => ({
+  id: r.id,
+  deskId: r.desk_id,
+  deskName: r.desk_name ?? undefined,
+  category: r.category,
+  title: r.title,
+  description: r.description ?? undefined,
+  fileName: r.file_name,
+  fileUrl: r.file_url,
+  fileSize: r.file_size ?? 0,
+  fileType: r.file_type ?? undefined,
+  uploadedByName: r.uploaded_by_name ?? undefined,
+  uploadedAt: r.uploaded_at
+});
+
+const fromRepositoryFile = (f: RepositoryFile) => ({
+  id: f.id,
+  desk_id: f.deskId,
+  desk_name: f.deskName ?? null,
+  category: f.category,
+  title: f.title,
+  description: f.description ?? null,
+  file_name: f.fileName,
+  file_url: f.fileUrl,
+  file_size: f.fileSize ?? null,
+  file_type: f.fileType ?? null,
+  uploaded_by_name: f.uploadedByName ?? null
+});
+
 /* =========================================================================
    DESKS & FIELD UNITS (reference data — read-mostly)
    ========================================================================= */
@@ -448,6 +478,41 @@ export const upsertBunch = async (bunch: FieldUnitBunch): Promise<void> => {
 export const deleteBunch = async (bunchId: string): Promise<void> => {
   const { error } = await supabase.from('field_unit_bunches').delete().eq('id', bunchId);
   if (error) console.error('Failed to delete field unit bunch', error);
+};
+
+/* =========================================================================
+   DESK REPOSITORY FILES — each desk's own document repository (circulars,
+   formats, policy orders...), organized under a free-text category.
+   Deliberately single-record only (get/upsert/delete) — NO whole-array
+   save function. A repository file can carry a base64 attachment several
+   MB in size; a whole-array sync (as requisitions/submissions used to do)
+   would re-send every file's full payload on every single change, and
+   that combined payload only grows — see the postmortem in App.tsx's
+   comments above the (removed) requisitions/submissions sync effects.
+   ========================================================================= */
+
+export const getStoredRepositoryFiles = async (): Promise<RepositoryFile[]> => {
+  const { data, error } = await supabase
+    .from('desk_repository_files')
+    .select('*')
+    .order('uploaded_at', { ascending: false });
+  if (error) {
+    console.error('Failed to fetch repository files', error);
+    return [];
+  }
+  return (data ?? []).map(toRepositoryFile);
+};
+
+export const upsertRepositoryFile = async (file: RepositoryFile): Promise<void> => {
+  const { error } = await supabase
+    .from('desk_repository_files')
+    .upsert(fromRepositoryFile(file), { onConflict: 'id' });
+  if (error) console.error('Failed to upsert repository file', error);
+};
+
+export const deleteRepositoryFile = async (fileId: string): Promise<void> => {
+  const { error } = await supabase.from('desk_repository_files').delete().eq('id', fileId);
+  if (error) console.error('Failed to delete repository file', error);
 };
 
 /* =========================================================================
