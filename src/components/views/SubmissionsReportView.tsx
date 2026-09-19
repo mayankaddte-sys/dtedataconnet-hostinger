@@ -5,6 +5,7 @@ import { formatDateTime } from '../../utils/dateUtils';
 import { getScopedSubmissions, getUserZone, getCurrentUserFieldUnit } from '../../utils/userScope';
 import { exportSubmissionsToCSV, exportSingleSubmissionToCSV } from '../../utils/exportUtils';
 import { useBlobPreviewUrl } from '../../utils/fileUtils';
+import { getStoredSubmissionById } from '../../lib/storage';
 import { 
   FileSpreadsheet, 
   Download, 
@@ -78,6 +79,8 @@ export const SubmissionsReportView: React.FC<SubmissionsReportViewProps> = ({
   const [previewingOrderDoc, setPreviewingOrderDoc] = useState<Requisition | null>(null);
   const [deletingRecord, setDeletingRecord] = useState<SubmissionRecord | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [loadingSubmissionId, setLoadingSubmissionId] = useState<string | null>(null);
+  const [loadingPreviewId, setLoadingPreviewId] = useState<string | null>(null);
 
   // Blob URL for the currently previewed uploaded letter (renders reliably
   // in an <iframe> even for large PDFs, unlike a raw data: URI).
@@ -287,6 +290,36 @@ export const SubmissionsReportView: React.FC<SubmissionsReportViewProps> = ({
       setViewingRecord(null);
     }
     setDeletingRecord(null);
+  };
+
+  const loadSubmissionDetails = async (record: SubmissionRecord): Promise<SubmissionRecord | null> => {
+    try {
+      return await getStoredSubmissionById(record.id);
+    } catch (error: any) {
+      console.error('Failed to load submission details', error);
+      alert(`सबमिशन विवरण लोड नहीं हो सका: ${error?.message || 'Unknown error'}`);
+      return null;
+    }
+  };
+
+  const handleOpenSubmissionDetail = async (record: SubmissionRecord) => {
+    setLoadingSubmissionId(record.id);
+    const full = await loadSubmissionDetails(record);
+    setLoadingSubmissionId(null);
+    if (!full) return;
+    setViewingRecord(full);
+  };
+
+  const handlePreviewDocument = async (record: SubmissionRecord) => {
+    setLoadingPreviewId(record.id);
+    const full = await loadSubmissionDetails(record);
+    setLoadingPreviewId(null);
+    if (!full) return;
+    if (!full.uploadedDocumentUrl && !full.digitalSignatureDataUrl) {
+      alert('इस सबमिशन के साथ कोई दस्तावेज़ उपलब्ध नहीं है।');
+      return;
+    }
+    setPreviewingDocument(full);
   };
 
   // Export to CSV Handler
@@ -1071,19 +1104,19 @@ export const SubmissionsReportView: React.FC<SubmissionsReportViewProps> = ({
                           <td className="py-3.5 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               <button
-                                onClick={() => setViewingRecord(sub)}
+                                onClick={() => handleOpenSubmissionDetail(sub)}
                                 className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-bold text-xs transition-colors inline-flex items-center gap-1 border border-indigo-200"
-                                title="सबमिशन विवरण देखें"
+                                title="सबमिशन विवरण देखें" disabled={loadingSubmissionId === sub.id}
                               >
                                 <Eye className="w-3 h-3" />
-                                <span>View</span>
+                                <span>{loadingSubmissionId === sub.id ? 'Loading…' : 'View'}</span>
                               </button>
 
-                              {(sub.uploadedDocumentUrl || sub.digitalSignatureDataUrl) && (
+                              {(sub.uploadedDocumentName || sub.signatureType || sub.uploadedDocumentUrl || sub.digitalSignatureDataUrl) && (
                                 <button
-                                  onClick={() => setPreviewingDocument(sub)}
+                                  onClick={() => handlePreviewDocument(sub)}
                                   className="p-1 text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors border border-indigo-200"
-                                  title="हस्ताक्षरित पत्र सीधे देखें (View Signed Letter)"
+                                  title="हस्ताक्षरित पत्र सीधे देखें (View Signed Letter)" disabled={loadingPreviewId === sub.id}
                                 >
                                   <Stamp className="w-3.5 h-3.5" />
                                 </button>
