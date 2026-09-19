@@ -283,7 +283,7 @@ export const getStoredDesks = async (): Promise<DirectorateDesk[]> => {
   const { data, error } = await supabase.from('directorate_desks').select('*');
   if (error) {
     console.error('Failed to fetch desks', error);
-    return [];
+    throw new Error(`desks: ${error.message}`);
   }
   return (data ?? []).map(toDesk);
 };
@@ -292,7 +292,7 @@ export const getStoredFieldUnits = async (): Promise<FieldUnit[]> => {
   const { data, error } = await supabase.from('field_units').select('*');
   if (error) {
     console.error('Failed to fetch field units', error);
-    return [];
+    throw new Error(`field_units: ${error.message}`);
   }
   return (data ?? []).map(toFieldUnit);
 };
@@ -308,7 +308,7 @@ export const getStoredRequisitions = async (): Promise<Requisition[]> => {
     .order('created_at', { ascending: false });
   if (error) {
     console.error('Failed to fetch requisitions', error);
-    return [];
+    throw new Error(`requisitions: ${error.message}`);
   }
   return (data ?? []).map(toRequisition);
 };
@@ -360,7 +360,7 @@ export const getStoredSubmissions = async (): Promise<SubmissionRecord[]> => {
     .order('submitted_at', { ascending: false });
   if (error) {
     console.error('Failed to fetch submissions', error);
-    return [];
+    throw new Error(`submissions: ${error.message}`);
   }
   return (data ?? []).map(toSubmission);
 };
@@ -397,7 +397,7 @@ export const getStoredExtensions = async (): Promise<ExtensionRequest[]> => {
     .order('created_at', { ascending: false });
   if (error) {
     console.error('Failed to fetch extension requests', error);
-    return [];
+    throw new Error(`extension_requests: ${error.message}`);
   }
   return (data ?? []).map(toExtension);
 };
@@ -427,7 +427,7 @@ export const getStoredDefaulterNotices = async (): Promise<DefaulterNotice[]> =>
     .order('sent_at', { ascending: false });
   if (error) {
     console.error('Failed to fetch defaulter notices', error);
-    return [];
+    throw new Error(`defaulter_notices: ${error.message}`);
   }
   return (data ?? []).map(toNotice);
 };
@@ -451,7 +451,7 @@ export const getStoredBunches = async (): Promise<FieldUnitBunch[]> => {
     .order('created_at', { ascending: false });
   if (error) {
     console.error('Failed to fetch field unit bunches', error);
-    return [];
+    throw new Error(`field_unit_bunches: ${error.message}`);
   }
   return (data ?? []).map(toBunch);
 };
@@ -498,7 +498,7 @@ export const getStoredRepositoryFiles = async (): Promise<RepositoryFile[]> => {
     .order('uploaded_at', { ascending: false });
   if (error) {
     console.error('Failed to fetch repository files', error);
-    return [];
+    throw new Error(`desk_repository_files: ${error.message}`);
   }
   return (data ?? []).map(toRepositoryFile);
 };
