@@ -7,6 +7,7 @@ export type PortalNavMenu =
   | 'EXTENSIONS' 
   | 'NOTICES' 
   | 'DIRECTORY' 
+  | 'REPOSITORY'
   | 'DIRECTOR_VIEW';
 
 export type PriorityLevel = 'URGENT' | 'HIGH' | 'NORMAL' | 'ROUTINE';
@@ -99,6 +100,26 @@ export type TargetScopeType =
   | 'SELECTED_ZONES' 
   | 'SAVED_BUNCH'
   | 'SPECIFIC_UNITS';
+
+// A file a directorate desk has uploaded to its own document repository
+// (circulars, formats, policy orders, etc.), organized under a free-text
+// category so desks can build their own folder-like structure. Visible to
+// every desk and every field unit (JD/ITI) for browsing/download; only the
+// owning desk (or the Directorate admin) can upload or delete into it.
+export interface RepositoryFile {
+  id: string;
+  deskId: string;
+  deskName?: string;
+  category: string; // e.g. "परिपत्र (Circulars)", "प्रारूप (Formats)"
+  title: string;
+  description?: string;
+  fileName: string;
+  fileUrl: string; // base64 data URI
+  fileSize: number; // bytes
+  fileType?: string; // mime type
+  uploadedByName?: string;
+  uploadedAt: string; // ISO string
+}
 
 // A directorate-defined, reusable named group of field units (any mix of
 // JD offices and ITIs). Desks create these once via the "Manage Bunches"
