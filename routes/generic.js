@@ -12,8 +12,7 @@ function assertKnownTable(table, res) {
   return true;
 }
 
-// Serialize JS values for JSON columns before sending
-// them to mysql2, and pass everything else through untouched.
+// Serialize JS values for JSON columns before sending them to MySQL.
 function serializeRow(table, row) {
   const { json } = TABLES[table];
   const out = {};
@@ -33,69 +32,84 @@ function serializeRow(table, row) {
   return out;
 }
 
-/* --------------------------------------------------------------------
-   GET /api/:table
+/*
+|--------------------------------------------------------------------------
+| GET /api/:table
+|--------------------------------------------------------------------------
+|
+| Examples:
+|
+| GET /api/field_units
+|
+| GET /api/field_units?select=id,name,status
+|
+| GET /api/field_units?select=*
+|
+| GET /api/requisitions?select=*&order=created_at.desc
+|
+| GET /api/submissions?select=id,status,submitted_at
+|
+| GET /api/submissions?id=eq.123
+|
+|--------------------------------------------------------------------------
+*/
 
-   Examples:
-
-   GET /api/field_units
-
-   GET /api/submissions?select=id,requisition_id,field_unit_id,status,submitted_at
-
-   GET /api/submissions?order=submitted_at.desc
-
-   GET /api/submissions?status=eq.PENDING
-
-   GET /api/submissions?id=eq.123
-
-   The optional "select" parameter is important because it prevents
-   large fields such as uploaded_document_url from being downloaded
-   during the initial dashboard load.
-   -------------------------------------------------------------------- */
 router.get('/:table', async (req, res) => {
   const { table } = req.params;
 
-  if (!assertKnownTable(table, res)) return;
+  if (!assertKnownTable(table, res)) {
+    return;
+  }
 
   /*
    * ---------------------------------------------------------------
-   * OPTIONAL COLUMN PROJECTION
-   *
-   * Without ?select=...
-   *     SELECT *
-   *
-   * With ?select=id,status,submitted_at
-   *     SELECT `id`, `status`, `submitted_at`
-   *
-   * This is the main performance improvement for submissions.
+   * SELECT / COLUMN PROJECTION
    * ---------------------------------------------------------------
+   *
+   * The existing frontend sends:
+   *
+   *     ?select=*
+   *
+   * Therefore '*' must remain valid.
+   *
+   * For performance-sensitive requests we also support:
+   *
+   *     ?select=id,status,submitted_at
+   *
+   * This allows the frontend to avoid downloading large fields such
+   * as uploaded_document_url during the initial dashboard load.
    */
 
   let selectClause = '*';
 
   if (req.query.select) {
-    const requested = String(req.query.select)
-      .split(',')
-      .map((c) => c.trim())
-      .filter(Boolean);
+    const selectValue = String(req.query.select).trim();
 
-    // Validate every requested column.
-    // Only simple SQL identifiers are permitted.
-    if (
-      requested.length === 0 ||
-      requested.some(
-        (c) =>
-          !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(c)
-      )
-    ) {
-      return res.status(400).json({
-        error: 'Invalid select columns'
-      });
+    // Backward compatibility with the existing frontend.
+    if (selectValue === '*') {
+      selectClause = '*';
+    } else {
+      const requested = selectValue
+        .split(',')
+        .map((column) => column.trim())
+        .filter(Boolean);
+
+      if (
+        requested.length === 0 ||
+        requested.some(
+          (column) =>
+            !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(column)
+        )
+      ) {
+        return res.status(400).json({
+          error: 'Invalid select columns'
+        });
+      }
+
+      selectClause = requested
+        .map((column) => `\`${column}\``)
+        .join(', ');
     }
-
-    selectClause = requested
-      .map((c) => `\`${c}\``)
-      .join(', ');
   }
 
   let sql = `
@@ -108,13 +122,13 @@ router.get('/:table', async (req, res) => {
   /*
    * ---------------------------------------------------------------
    * FILTERS
+   * ---------------------------------------------------------------
    *
    * Supports:
    *
    * ?status=eq.PENDING
    * ?status=neq.COMPLETED
    * ?id=eq.123
-   * ---------------------------------------------------------------
    */
 
   const filters = [];
@@ -127,58 +141,62 @@ router.get('/:table', async (req, res) => {
       continue;
     }
 
-    // Ignore anything that isn't a safe SQL identifier.
+    // Only allow safe SQL identifiers.
     if (
       !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)
     ) {
       continue;
     }
 
-    const val = String(raw);
+    const value = String(raw);
 
-    if (val.startsWith('eq.')) {
+    if (value.startsWith('eq.')) {
       filters.push(`\`${key}\` = ?`);
-      params.push(val.slice(3));
-    } else if (val.startsWith('neq.')) {
+      params.push(value.slice(3));
+    } else if (value.startsWith('neq.')) {
       filters.push(`\`${key}\` != ?`);
-      params.push(val.slice(4));
+      params.push(value.slice(4));
     }
   }
 
-  if (filters.length) {
+  if (filters.length > 0) {
     sql += ` WHERE ${filters.join(' AND ')}`;
   }
 
   /*
    * ---------------------------------------------------------------
    * ORDER
-   *
-   * Example:
-   *
-   * ?order=submitted_at.desc
    * ---------------------------------------------------------------
+   *
+   * Examples:
+   *
+   * ?order=created_at.desc
+   * ?order=submitted_at.desc
    */
 
   if (req.query.order) {
-    const [col, dir] = String(req.query.order).split('.');
+    const [column, direction] =
+      String(req.query.order).split('.');
 
-    const safeDir =
-      dir === 'desc'
+    const safeDirection =
+      direction === 'desc'
         ? 'DESC'
         : 'ASC';
 
     if (
-      /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(col)
+      /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(column)
     ) {
-      sql += ` ORDER BY \`${col}\` ${safeDir}`;
+      sql +=
+        ` ORDER BY \`${column}\` ${safeDirection}`;
     }
   }
 
   try {
-    const [rows] = await pool.query(
-      sql,
-      params
-    );
+    const [rows] =
+      await pool.query(
+        sql,
+        params
+      );
 
     res.json({
       data: rows,
@@ -196,22 +214,26 @@ router.get('/:table', async (req, res) => {
   }
 });
 
-/* --------------------------------------------------------------------
-   POST /api/:table/upsert
+/*
+|--------------------------------------------------------------------------
+| POST /api/:table/upsert
+|--------------------------------------------------------------------------
+|
+| Body:
+|
+| {
+|   "rows": [...]
+| }
+|
+|--------------------------------------------------------------------------
+*/
 
-   Body:
-
-   {
-     rows: [...],
-     onConflict: "id"
-   }
-
-   The operation matches existing rows using the configured primary key.
-   -------------------------------------------------------------------- */
 router.post('/:table/upsert', async (req, res) => {
   const { table } = req.params;
 
-  if (!assertKnownTable(table, res)) return;
+  if (!assertKnownTable(table, res)) {
+    return;
+  }
 
   const { rows } = req.body;
 
@@ -245,14 +267,11 @@ router.post('/:table/upsert', async (req, res) => {
 
       const values =
         columns.map(
-          (c) => row[c]
+          (column) => row[column]
         );
 
       /*
-       * Match using PRIMARY KEY only.
-       *
-       * This avoids accidentally updating another row because
-       * of a collision on a different UNIQUE field.
+       * Match existing rows using the configured primary key.
        */
 
       const [existing] =
@@ -265,25 +284,30 @@ router.post('/:table/upsert', async (req, res) => {
         );
 
       if (existing.length > 0) {
-        const updateCols =
+        /*
+         * UPDATE existing row.
+         */
+
+        const updateColumns =
           columns.filter(
-            (c) => c !== pk
+            (column) => column !== pk
           );
 
         if (
-          updateCols.length > 0
+          updateColumns.length > 0
         ) {
           const setClause =
-            updateCols
+            updateColumns
               .map(
-                (c) =>
-                  `\`${c}\` = ?`
+                (column) =>
+                  `\`${column}\` = ?`
               )
               .join(', ');
 
           const updateValues =
-            updateCols.map(
-              (c) => row[c]
+            updateColumns.map(
+              (column) =>
+                row[column]
             );
 
           await conn.query(
@@ -297,6 +321,10 @@ router.post('/:table/upsert', async (req, res) => {
           );
         }
       } else {
+        /*
+         * INSERT new row.
+         */
+
         const placeholders =
           columns
             .map(() => '?')
@@ -306,7 +334,8 @@ router.post('/:table/upsert', async (req, res) => {
           `INSERT INTO \`${table}\`
            (${columns
              .map(
-               (c) => `\`${c}\``
+               (column) =>
+                 `\`${column}\``
              )
              .join(', ')})
            VALUES (${placeholders})`,
@@ -345,21 +374,28 @@ router.post('/:table/upsert', async (req, res) => {
   }
 });
 
-/* --------------------------------------------------------------------
-   DELETE /api/:table
+/*
+|--------------------------------------------------------------------------
+| DELETE /api/:table
+|--------------------------------------------------------------------------
+|
+| Examples:
+|
+| DELETE /api/submissions?id=eq.123
+|
+| DELETE /api/requisitions?id=eq.123
+|
+| DELETE without a filter is deliberately refused.
+|
+|--------------------------------------------------------------------------
+*/
 
-   Supports:
-
-   DELETE /api/submissions?id=eq.123
-
-   DELETE /api/submissions?status=eq.PENDING
-
-   DELETE requests without filters are refused.
-   -------------------------------------------------------------------- */
 router.delete('/:table', async (req, res) => {
   const { table } = req.params;
 
-  if (!assertKnownTable(table, res)) return;
+  if (!assertKnownTable(table, res)) {
+    return;
+  }
 
   const filters = [];
   const values = [];
@@ -373,21 +409,22 @@ router.delete('/:table', async (req, res) => {
       continue;
     }
 
-    const val = String(raw);
+    const value = String(raw);
 
-    if (val.startsWith('eq.')) {
+    if (value.startsWith('eq.')) {
       filters.push(`\`${key}\` = ?`);
-      values.push(val.slice(3));
+      values.push(value.slice(3));
     } else if (
-      val.startsWith('neq.')
+      value.startsWith('neq.')
     ) {
       filters.push(`\`${key}\` != ?`);
-      values.push(val.slice(4));
+      values.push(value.slice(4));
     }
   }
 
   /*
-   * Safety: never allow DELETE without a filter.
+   * Safety protection:
+   * Never allow DELETE without a WHERE condition.
    */
 
   if (filters.length === 0) {
