@@ -12,6 +12,7 @@ import { StatusBadge } from '../common/StatusBadge';
 import { formatDateTime } from '../../utils/dateUtils';
 import { exportRequisitionDataToCSV } from '../../utils/exportUtils';
 import { dispatchManualEmailReminder } from '../../lib/emailReminderEngine';
+import { getStoredSubmissionById } from '../../lib/storage';
 import { 
   ArrowLeft, 
   Download, 
@@ -94,6 +95,7 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
   const [noticeSubject, setNoticeSubject] = useState<string>(`Urgent Reminder: Requisition No. ${requisition.requisitionNumber} data pending`);
   const [noticeMessage, setNoticeMessage] = useState<string>(`यह एक आधिकारिक स्मरण पत्र है कि मांग आदेश "${requisition.title}" का डेटा निर्धारित समय-सीमा ${formatDateTime(requisition.deadline)} तक पोर्टल पर अपलोड करें। विलंब होने की स्थिति में उच्चाधिकारियों को सूचित किया जाएगा।`);
   const [noticeSentSuccess, setNoticeSentSuccess] = useState<boolean>(false);
+  const [loadingSubmissionId, setLoadingSubmissionId] = useState<string | null>(null);
 
   // Deadline Extension Modal
   const [isExtensionModalOpen, setIsExtensionModalOpen] = useState<boolean>(false);
@@ -137,10 +139,28 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
     return true;
   });
 
-  const handleOpenSubmissionDetail = (unit: FieldUnit, sub?: SubmissionRecord) => {
+  const handleOpenSubmissionDetail = async (unit: FieldUnit, sub?: SubmissionRecord) => {
     setViewingUnit(unit);
-    setViewingSubmission(sub || null);
-    setDeskComments(sub?.deskComments || '');
+    if (!sub) {
+      setViewingSubmission(null);
+      return;
+    }
+
+    setLoadingSubmissionId(sub.id);
+    try {
+      const full = await getStoredSubmissionById(sub.id);
+      if (!full) {
+        alert('सबमिशन विवरण नहीं मिला।');
+        return;
+      }
+      setViewingSubmission(full);
+      setDeskComments(full.deskComments || '');
+    } catch (error: any) {
+      console.error('Failed to load submission details', error);
+      alert(`सबमिशन विवरण लोड नहीं हो सका: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setLoadingSubmissionId(null);
+    }
   };
 
   const handleSendReview = (status: 'APPROVED' | 'REVISION_REQUESTED') => {
@@ -499,7 +519,7 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
                         {sub ? (
                           <div className="flex items-center justify-end gap-1.5">
                             <button
-                              onClick={() => handleOpenSubmissionDetail(unit, sub)}
+                              onClick={() => handleOpenSubmissionDetail(unit, sub)} disabled={loadingSubmissionId === sub?.id}
                               className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-md font-bold text-xs inline-flex items-center gap-1 transition-colors"
                               title="सबमिशन समीक्षा व सत्यापन"
                             >
