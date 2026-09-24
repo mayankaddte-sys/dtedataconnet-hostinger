@@ -300,6 +300,18 @@ export const INITIAL_DESKS: DirectorateDesk[] = [
     description: 'NCVT राष्ट्रीय व्यवसाय प्रमाण पत्र (NTC), SCVT राज्य व्यवसाय प्रमाण पत्र, डुप्लीकेट प्रमाण-पत्र, अंकपत्र संशोधन एवं ई-सत्यापन।',
     iconName: 'Award',
     colorScheme: 'indigo'
+  },
+  {
+    id: 'desk-disposal',
+    code: 'DTE-UP-DISPOSAL',
+    name: 'निस्तारण एवं वसूली अनुभाग (Disposal & Recovery Section)',
+    officerInCharge: '',
+    designation: 'उप निदेशक (निस्तारण एवं वसूली)',
+    email: '',
+    phone: '',
+    description: 'निष्प्रयोज्य साज सज्जा स्क्रैप, तैयार माल का निस्तारण, चोरी कमी वसूली संबंधी कार्य',
+    iconName: 'Trash2',
+    colorScheme: 'amber'
   }
 ];
 
@@ -788,4 +800,3 @@ export const INITIAL_EXTENSION_REQUESTS: ExtensionRequest[] = [
     deskResponseComment: '48 घंटे की समय-वृद्धि स्वीकृत की गई। संयुक्त निरीक्षण रिपोर्ट संलग्न करना अनिवार्य है।'
   }
 ];
-
