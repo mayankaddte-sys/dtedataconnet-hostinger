@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { DirectorateDesk, FieldUnit, RepositoryFile, UserSession } from '../../types/portal';
+import { useBlobPreviewUrl } from '../../utils/fileUtils';
 import {
   FolderOpen,
   Folder,
@@ -56,6 +57,11 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
   const [deskFilter, setDeskFilter] = useState<string>('ALL');
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [previewingFile, setPreviewingFile] = useState<RepositoryFile | null>(null);
+  // Raw data: URIs can silently fail to render inside <img>/<iframe> once a
+  // file gets into the several-MB range (this is exactly what produced the
+  // "We can't open this file" error) — converting to a Blob URL first fixes
+  // that. See src/utils/fileUtils.ts.
+  const previewBlobUrl = useBlobPreviewUrl(previewingFile?.fileUrl);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Upload form state
@@ -105,9 +111,27 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // Shared hosting MySQL is commonly configured with a fairly low
+  // max_allowed_packet (often 1-4 MB). A base64-encoded file inflates to
+  // roughly 1.33x its raw size, and a single oversized row can silently
+  // get truncated/corrupted on write instead of cleanly failing — which is
+  // exactly what happened with a large scanned PDF here. Reject oversized
+  // files up front with a clear message instead of letting that recur.
+  const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // 4 MB raw file (~5.3 MB as base64)
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setFormError(`फ़ाइल बहुत बड़ी है (${formatSize(file.size)})। कृपया 4 MB से छोटी फ़ाइल अपलोड करें — बड़े PDF को पहले compress/scan quality कम करके छोटा करें।`);
+      setPendingFileName('');
+      setPendingFileUrl('');
+      setPendingFileSize(0);
+      setPendingFileType('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    setFormError('');
     setPendingFileName(file.name);
     setPendingFileSize(file.size);
     setPendingFileType(file.type);
@@ -372,7 +396,7 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">फ़ाइल चुनें (PDF/Excel/Word/Image) *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">फ़ाइल चुनें (PDF/Excel/Word/Image) * <span className="text-slate-400 font-normal">(अधिकतम 4 MB)</span></label>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -411,10 +435,10 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
 
             {previewingFile.fileUrl.startsWith('data:image') ? (
               <div className="border rounded-lg overflow-hidden max-h-96 flex items-center justify-center bg-slate-100">
-                <img src={previewingFile.fileUrl} alt={previewingFile.title} className="max-h-96 object-contain" />
+                <img src={previewBlobUrl || previewingFile.fileUrl} alt={previewingFile.title} className="max-h-96 object-contain" />
               </div>
             ) : previewingFile.fileUrl.startsWith('data:application/pdf') ? (
-              <iframe src={previewingFile.fileUrl} className="w-full h-96 border rounded-lg" title={previewingFile.title} />
+              <iframe src={previewBlobUrl || previewingFile.fileUrl} className="w-full h-96 border rounded-lg" title={previewingFile.title} />
             ) : (
               <div className="p-6 bg-indigo-50/50 rounded-xl border border-indigo-100 text-center space-y-2">
                 <FileText className="w-12 h-12 text-indigo-600 mx-auto" />
