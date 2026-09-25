@@ -164,9 +164,15 @@ export const runAutomaticEmailReminderCycle = (
     });
 
     targetUnits.forEach(unit => {
-      // Check if unit has already submitted
+      // Check if unit has already submitted. Matches the "still pending"
+      // definition used everywhere else in the app (FieldDashboard,
+      // SubmissionsReportView, RequisitionDetailView): a submission sitting
+      // in UNDER_REVIEW or LATE_SUBMITTED is done from the unit's side, not
+      // something they still need a reminder for. Only REVISION_REQUESTED
+      // (and no submission at all) still counts as pending.
       const isSubmitted = submissions.some(
-        s => s.requisitionId === req.id && s.fieldUnitId === unit.id && (s.status === 'SUBMITTED' || s.status === 'APPROVED')
+        s => s.requisitionId === req.id && s.fieldUnitId === unit.id &&
+          (s.status === 'SUBMITTED' || s.status === 'LATE_SUBMITTED' || s.status === 'UNDER_REVIEW' || s.status === 'APPROVED')
       );
 
       if (isSubmitted) return; // No reminder needed if already submitted
