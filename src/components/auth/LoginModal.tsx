@@ -274,10 +274,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       // 2. Check if Desk Section
       const matchedDesk = desks.find(
         d =>
-          d.id.toLowerCase() === identifier ||
-          d.code.toLowerCase() === identifier ||
-          d.email.toLowerCase() === identifier ||
-          d.name.toLowerCase().includes(identifier)
+          (d.id || '').toLowerCase() === identifier ||
+          (d.code || '').toLowerCase() === identifier ||
+          (d.email || '').toLowerCase() === identifier ||
+          (d.name || '').toLowerCase().includes(identifier)
       );
 
       if (matchedDesk) {
@@ -305,12 +305,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       // 3. Check if Field Unit (ITI or JD Office)
       const matchedUnit = fieldUnits.find(
         u =>
-          u.id.toLowerCase() === identifier ||
-          u.code.toLowerCase() === identifier ||
-          u.email.toLowerCase() === identifier ||
-          u.email.toLowerCase() === `giti${identifier}@vppup.in` ||
-          u.code.toLowerCase() === `iti-${identifier}` ||
-          u.code.toLowerCase() === `giti-${identifier}`
+          (u.id || '').toLowerCase() === identifier ||
+          (u.code || '').toLowerCase() === identifier ||
+          (u.email || '').toLowerCase() === identifier ||
+          (u.email || '').toLowerCase() === `giti${identifier}@vppup.in` ||
+          (u.code || '').toLowerCase() === `iti-${identifier}` ||
+          (u.code || '').toLowerCase() === `giti-${identifier}`
       );
 
       if (matchedUnit) {
@@ -351,27 +351,27 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   };
 
   const filteredDesks = desks.filter(d => {
-    return d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           d.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           d.designation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           d.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return (d.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+           (d.code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+           (d.designation || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+           (d.description || '').toLowerCase().includes(searchQuery.toLowerCase());
   });
 
   const filteredJDOffices = jdOffices.filter(u => {
-    const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          u.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          u.district.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          u.zone.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          (u.code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (u.district || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (u.zone || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesZone = filterZone === 'ALL' || u.zone === filterZone;
     return matchesSearch && matchesZone;
   });
 
   const filteredITIs = itiUnits.filter(u => {
-    const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          u.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          u.district.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          u.zone.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          u.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          (u.code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (u.district || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (u.zone || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (u.email || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesZone = filterZone === 'ALL' || u.zone === filterZone;
     return matchesSearch && matchesZone;
   });
