@@ -271,66 +271,81 @@ export default function App() {
     }
   };
 
-  const handleSaveRequisition = (newReq: Requisition) => {
-    const updated = [newReq, ...requisitions];
-    setRequisitions(updated);
-    setSelectedRequisition(newReq);
-    setActiveMenu('REQUISITIONS');
+  const handleSaveRequisition = async (newReq: Requisition) => {
+    try {
+      // IMPORTANT: confirm the database write BEFORE changing local state.
+      // This prevents the UI from showing a demand that disappears after refresh.
+      await upsertRequisition(newReq);
 
-    upsertRequisition(newReq).catch(e =>
-      console.error('Failed to save requisition to backend', e)
-    );
+      setRequisitions(prev => [newReq, ...prev]);
+      setSelectedRequisition(newReq);
+      setActiveMenu('REQUISITIONS');
 
-    // Fire-and-forget: notify every targeted field unit by email that a new
-    // demand has been issued. Doesn't block the UI on email delivery.
-    const senderDesk = desks.find(d => d.id === newReq.deskId);
-    dispatchNewRequisitionEmails(newReq, fieldUnits, senderDesk).then(result => {
-      if (result.failedCount > 0) {
-        console.error(`New requisition email: ${result.failedCount} of ${result.sentCount + result.failedCount} failed to send`);
-      }
-    }).catch(e => console.error('Failed to dispatch new requisition emails', e));
+      // Email is best-effort and must never decide whether the demand was saved.
+      const senderDesk = desks.find(d => d.id === newReq.deskId);
+      dispatchNewRequisitionEmails(newReq, fieldUnits, senderDesk).then(result => {
+        if (result.failedCount > 0) {
+          console.error(`New requisition email: ${result.failedCount} of ${result.sentCount + result.failedCount} failed to send`);
+        }
+      }).catch(e => console.error('Failed to dispatch new requisition emails', e));
+    } catch (e: any) {
+      console.error('Failed to save requisition to backend', e);
+      window.alert(`डेटा मांग सुरक्षित नहीं हो सकी।\n\n${e?.message || 'कृपया पुनः प्रयास करें।'}`);
+    }
   };
 
   // Create or update a reusable field-unit bunch (upsert by id — the
   // ManageBunches editor sets a fresh id for new bunches, keeps the
   // existing one for edits).
-  const handleSaveBunch = (bunch: FieldUnitBunch) => {
-    setBunches(prev => {
-      const exists = prev.some(b => b.id === bunch.id);
-      return exists ? prev.map(b => (b.id === bunch.id ? bunch : b)) : [bunch, ...prev];
-    });
+  const handleSaveBunch = async (bunch: FieldUnitBunch) => {
+    try {
+      await saveBunches([bunch]);
+
+      setBunches(prev => {
+        const exists = prev.some(b => b.id === bunch.id);
+        return exists ? prev.map(b => (b.id === bunch.id ? bunch : b)) : [bunch, ...prev];
+      });
+    } catch (e: any) {
+      console.error('Failed to save field unit bunch', e);
+      window.alert(`Field Unit Bunch सुरक्षित नहीं हो सका।\n\n${e?.message || 'कृपया पुनः प्रयास करें।'}`);
+    }
   };
 
-  const handleDeleteBunch = (bunchId: string) => {
-    setBunches(prev => prev.filter(b => b.id !== bunchId));
-
-    // Local state above only updates this browser's view — the bunches
-    // "sync" effect only ever upserts, so without this explicit call the
-    // row would stay in the database forever (same reasoning as
-    // deleteRequisition below).
-    deleteBunch(bunchId).catch(e =>
-      console.error('Failed to delete field unit bunch', e)
-    );
+  const handleDeleteBunch = async (bunchId: string) => {
+    try {
+      await deleteBunch(bunchId);
+      setBunches(prev => prev.filter(b => b.id !== bunchId));
+    } catch (e: any) {
+      console.error('Failed to delete field unit bunch', e);
+      window.alert(`Field Unit Bunch हटाया नहीं जा सका।\n\n${e?.message || 'कृपया पुनः प्रयास करें।'}`);
+    }
   };
 
   // Add (or, in principle, edit) a file in a desk's document repository.
   // Single-record upsert only — see the note in storage.ts on why this
   // table deliberately has no whole-array sync function.
-  const handleSaveRepositoryFile = (file: RepositoryFile) => {
-    setRepositoryFiles(prev => {
-      const exists = prev.some(f => f.id === file.id);
-      return exists ? prev.map(f => (f.id === file.id ? file : f)) : [file, ...prev];
-    });
-    upsertRepositoryFile(file).catch(e =>
-      console.error('Failed to save repository file to backend', e)
-    );
+  const handleSaveRepositoryFile = async (file: RepositoryFile) => {
+    try {
+      await upsertRepositoryFile(file);
+
+      setRepositoryFiles(prev => {
+        const exists = prev.some(f => f.id === file.id);
+        return exists ? prev.map(f => (f.id === file.id ? file : f)) : [file, ...prev];
+      });
+    } catch (e: any) {
+      console.error('Failed to save repository file to backend', e);
+      window.alert(`दस्तावेज़ सुरक्षित नहीं हो सका।\n\n${e?.message || 'कृपया पुनः प्रयास करें।'}`);
+    }
   };
 
-  const handleDeleteRepositoryFile = (fileId: string) => {
-    setRepositoryFiles(prev => prev.filter(f => f.id !== fileId));
-    deleteRepositoryFile(fileId).catch(e =>
-      console.error('Failed to delete repository file', e)
-    );
+  const handleDeleteRepositoryFile = async (fileId: string) => {
+    try {
+      await deleteRepositoryFile(fileId);
+      setRepositoryFiles(prev => prev.filter(f => f.id !== fileId));
+    } catch (e: any) {
+      console.error('Failed to delete repository file', e);
+      window.alert(`दस्तावेज़ हटाया नहीं जा सका।\n\n${e?.message || 'कृपया पुनः प्रयास करें।'}`);
+    }
   };
 
   // A JD office relays a requisition it received (targeted at the JD, not
@@ -338,7 +353,7 @@ export default function App() {
   // ITI ids to the SAME requisition's targetUnitIds — reusing all the
   // existing visibility/submission plumbing rather than creating a
   // duplicate child requisition — and logs who forwarded it and when.
-  const handleForwardRequisitionToItis = (requisitionId: string, unitIds: string[]) => {
+  const handleForwardRequisitionToItis = async (requisitionId: string, unitIds: string[]) => {
     if (currentUser?.role !== 'FIELD_JD' || !currentFieldUnit) return;
 
     const req = requisitions.find(r => r.id === requisitionId);
@@ -365,61 +380,57 @@ export default function App() {
       forwardLog: [...(req.forwardLog || []), ...forwardEntries]
     };
 
-    setRequisitions(requisitions.map(r => (r.id === requisitionId ? updatedReq : r)));
-    if (selectedRequisition?.id === requisitionId) {
-      setSelectedRequisition(updatedReq);
+    try {
+      await upsertRequisition(updatedReq);
+
+      setRequisitions(prev => prev.map(r => (r.id === requisitionId ? updatedReq : r)));
+      if (selectedRequisition?.id === requisitionId) {
+        setSelectedRequisition(updatedReq);
+      }
+
+      const newlyTargetedUnits = fieldUnits.filter(u => newUnitIds.includes(u.id));
+      const senderDesk = desks.find(d => d.id === updatedReq.deskId);
+      dispatchNewRequisitionEmails(updatedReq, fieldUnits, senderDesk, newlyTargetedUnits).catch(e =>
+        console.error('Failed to notify forwarded ITIs', e)
+      );
+    } catch (e: any) {
+      console.error('Failed to save forwarded requisition to backend', e);
+      window.alert(`ITI को demand forward नहीं हो सकी।\n\n${e?.message || 'कृपया पुनः प्रयास करें।'}`);
     }
-
-    upsertRequisition(updatedReq).catch(e =>
-      console.error('Failed to save forwarded requisition to backend', e)
-    );
-
-    // Notify exactly the newly forwarded ITIs (not re-derived from scope —
-    // see the comment on dispatchNewRequisitionEmails for why that matters).
-    const newlyTargetedUnits = fieldUnits.filter(u => newUnitIds.includes(u.id));
-    const senderDesk = desks.find(d => d.id === updatedReq.deskId);
-    dispatchNewRequisitionEmails(updatedReq, fieldUnits, senderDesk, newlyTargetedUnits).catch(e =>
-      console.error('Failed to notify forwarded ITIs', e)
-    );
   };
 
-  const handleUpdateSubmissionStatus = (
-    submissionId: string, 
-    status: 'APPROVED' | 'REVISION_REQUESTED', 
+  const handleUpdateSubmissionStatus = async (
+    submissionId: string,
+    status: 'APPROVED' | 'REVISION_REQUESTED',
     comments?: string
   ) => {
-    let savedSub: SubmissionRecord | undefined;
-    const updated = submissions.map(sub => {
-      if (sub.id === submissionId) {
-        savedSub = {
-          ...sub,
-          status,
-          deskComments: comments || sub.deskComments,
-          deskReviewedAt: new Date().toISOString(),
-          deskReviewedBy: currentUser?.displayName || ''
-        };
-        return savedSub;
-      }
-      return sub;
-    });
-    setSubmissions(updated);
+    const existing = submissions.find(sub => sub.id === submissionId);
+    if (!existing) return;
 
-    // Upsert just this one record — see the note above the (removed)
-    // whole-array submissions effect for why.
-    if (savedSub) {
-      upsertSubmission(savedSub).catch(e =>
-        console.error('Failed to save submission review to backend', e)
-      );
+    const savedSub: SubmissionRecord = {
+      ...existing,
+      status,
+      deskComments: comments || existing.deskComments,
+      deskReviewedAt: new Date().toISOString(),
+      deskReviewedBy: currentUser?.displayName || ''
+    };
+
+    try {
+      await upsertSubmission(savedSub);
+      setSubmissions(prev => prev.map(sub => sub.id === submissionId ? savedSub : sub));
+    } catch (e: any) {
+      console.error('Failed to save submission review to backend', e);
+      window.alert(`Submission status सुरक्षित नहीं हो सका।\n\n${e?.message || 'कृपया पुनः प्रयास करें।'}`);
     }
   };
 
-  const handleFieldSubmit = (subData: Partial<SubmissionRecord>) => {
+  const handleFieldSubmit = async (subData: Partial<SubmissionRecord>) => {
     const existingIndex = submissions.findIndex(
       s => s.requisitionId === subData.requisitionId && s.fieldUnitId === subData.fieldUnitId
     );
 
-    let updated: SubmissionRecord[];
     let savedSub: SubmissionRecord;
+
     if (existingIndex >= 0) {
       savedSub = {
         ...submissions[existingIndex],
@@ -427,24 +438,35 @@ export default function App() {
         submittedAt: new Date().toISOString(),
         status: 'SUBMITTED'
       } as SubmissionRecord;
-      updated = [...submissions];
-      updated[existingIndex] = savedSub;
     } else {
-      savedSub = subData as SubmissionRecord;
-      updated = [savedSub, ...submissions];
+      savedSub = {
+        ...subData,
+        submittedAt: subData.submittedAt || new Date().toISOString(),
+        status: 'SUBMITTED'
+      } as SubmissionRecord;
     }
 
-    setSubmissions(updated);
+    try {
+      // CRITICAL: do not show the submission as saved until the database
+      // confirms the write. This prevents data disappearing after refresh.
+      await upsertSubmission(savedSub);
 
-    // Upsert just this one record — see the note above the (removed)
-    // whole-array submissions effect for why. This is the fix for letters/
-    // signatures failing to actually reach the backend: previously every
-    // submission (all of their base64 files) got re-sent on every single
-    // new submission, and that combined payload eventually exceeded the
-    // server's request-size limit, so nothing after that point ever saved.
-    upsertSubmission(savedSub).catch(e =>
-      console.error('Failed to save submission to backend', e)
-    );
+      setSubmissions(prev => {
+        const index = prev.findIndex(s => s.id === savedSub.id);
+        if (index >= 0) {
+          return prev.map(s => s.id === savedSub.id ? savedSub : s);
+        }
+        return [savedSub, ...prev];
+      });
+
+      // Close the submission modal only after the database confirms success.
+      setSubmittingRequisition(null);
+      setSubmittingExistingRecord(undefined);
+    } catch (e: any) {
+      console.error('Failed to save submission to backend', e);
+      window.alert(`प्रतिक्रिया सुरक्षित नहीं हो सकी।\n\n${e?.message || 'कृपया पुनः प्रयास करें।'}`);
+      // Keep the modal open so the user can retry without losing entered data.
+    }
   };
 
   const handleSendDefaulterNotice = async (unitIds: string[], subject: string, message: string, reqId?: string) => {
