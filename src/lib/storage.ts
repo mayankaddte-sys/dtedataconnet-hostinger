@@ -281,19 +281,23 @@ const fromRepositoryFile = (f: RepositoryFile) => ({
 
 export const getStoredDesks = async (): Promise<DirectorateDesk[]> => {
   const { data, error } = await supabase.from('directorate_desks').select('*');
+
   if (error) {
     console.error('Failed to fetch desks', error);
     throw new Error(error.message || 'Failed to fetch desks');
   }
+
   return (data ?? []).map(toDesk);
 };
 
 export const getStoredFieldUnits = async (): Promise<FieldUnit[]> => {
   const { data, error } = await supabase.from('field_units').select('*');
+
   if (error) {
     console.error('Failed to fetch field units', error);
     throw new Error(error.message || 'Failed to fetch field units');
   }
+
   return (data ?? []).map(toFieldUnit);
 };
 
@@ -306,27 +310,45 @@ export const getStoredRequisitions = async (): Promise<Requisition[]> => {
     .from('requisitions')
     .select('*')
     .order('created_at', { ascending: false });
+
   if (error) {
     console.error('Failed to fetch requisitions', error);
     throw new Error(error.message || 'Failed to fetch requisitions');
   }
+
   return (data ?? []).map(toRequisition);
 };
 
 // Upserts the full list passed in (mirrors old "save whole array" behaviour).
-export const saveRequisitions = async (requisitions: Requisition[]): Promise<void> => {
+export const saveRequisitions = async (
+  requisitions: Requisition[]
+): Promise<void> => {
   if (requisitions.length === 0) return;
+
   const rows = requisitions.map(fromRequisition);
-  const { error } = await supabase.from('requisitions').upsert(rows, { onConflict: 'id' });
-  if (error) console.error('Failed to save requisitions', error);
+
+  const { error } = await supabase
+    .from('requisitions')
+    .upsert(rows, { onConflict: 'id' });
+
+  if (error) {
+    console.error('Failed to save requisitions', error);
+    throw new Error(error.message || 'Failed to save requisitions');
+  }
 };
 
 // Prefer this for a single create/update — avoids re-sending the whole table.
-export const upsertRequisition = async (requisition: Requisition): Promise<void> => {
+export const upsertRequisition = async (
+  requisition: Requisition
+): Promise<void> => {
   const { error } = await supabase
     .from('requisitions')
     .upsert(fromRequisition(requisition), { onConflict: 'id' });
-  if (error) console.error('Failed to upsert requisition', error);
+
+  if (error) {
+    console.error('Failed to upsert requisition', error);
+    throw new Error(error.message || 'Failed to save requisition');
+  }
 };
 
 // Actually deletes a requisition (and everything hanging off it) from
@@ -334,19 +356,53 @@ export const upsertRequisition = async (requisition: Requisition): Promise<void>
 // row that's been filtered out of local state — this is the only path that
 // makes a "deleted" requisition disappear for every user, not just the one
 // who deleted it locally.
-export const deleteRequisition = async (requisitionId: string): Promise<void> => {
+export const deleteRequisition = async (
+  requisitionId: string
+): Promise<void> => {
   // Children first, in case FKs aren't set to ON DELETE CASCADE.
-  const results = await Promise.all([
-    supabase.from('submissions').delete().eq('requisition_id', requisitionId),
-    supabase.from('extension_requests').delete().eq('requisition_id', requisitionId),
-    supabase.from('defaulter_notices').delete().eq('requisition_id', requisitionId)
-  ]);
-  results.forEach(({ error }) => {
-    if (error) console.error('Failed to delete requisition child rows', error);
-  });
 
-  const { error } = await supabase.from('requisitions').delete().eq('id', requisitionId);
-  if (error) console.error('Failed to delete requisition', error);
+  const childResults = await Promise.all([
+    supabase
+      .from('submissions')
+      .delete()
+      .eq('requisition_id', requisitionId),
+
+    supabase
+      .from('extension_requests')
+      .delete()
+      .eq('requisition_id', requisitionId),
+
+    supabase
+      .from('defaulter_notices')
+      .delete()
+      .eq('requisition_id', requisitionId)
+  ]);
+
+  const childError = childResults.find((result) => result.error);
+
+  if (childError?.error) {
+    console.error(
+      'Failed to delete requisition child rows',
+      childError.error
+    );
+
+    throw new Error(
+      childError.error.message ||
+      'Failed to delete requisition child rows'
+    );
+  }
+
+  const { error } = await supabase
+    .from('requisitions')
+    .delete()
+    .eq('id', requisitionId);
+
+  if (error) {
+    console.error('Failed to delete requisition', error);
+    throw new Error(
+      error.message || 'Failed to delete requisition'
+    );
+  }
 };
 
 /* =========================================================================
@@ -390,47 +446,81 @@ export const getStoredSubmissions = async (): Promise<SubmissionRecord[]> => {
     .from('submissions')
     .select(SUBMISSION_LIST_COLUMNS)
     .order('submitted_at', { ascending: false });
+
   if (error) {
     console.error('Failed to fetch submissions', error);
     throw new Error(error.message || 'Failed to fetch submissions');
   }
+
   return (data ?? []).map(toSubmission);
 };
 
 // Fetch one complete submission only when a user opens its detail/preview.
 // This includes the potentially large document/signature fields.
-export const getStoredSubmissionById = async (submissionId: string): Promise<SubmissionRecord | null> => {
+export const getStoredSubmissionById = async (
+  submissionId: string
+): Promise<SubmissionRecord | null> => {
   const { data, error } = await supabase
     .from('submissions')
     .select('*')
     .eq('id', submissionId);
+
   if (error) {
     console.error('Failed to fetch submission details', error);
-    throw new Error(error.message || 'Failed to fetch submission details');
+    throw new Error(
+      error.message || 'Failed to fetch submission details'
+    );
   }
+
   const row = Array.isArray(data) ? data[0] : null;
+
   return row ? toSubmission(row) : null;
 };
 
-export const saveSubmissions = async (submissions: SubmissionRecord[]): Promise<void> => {
+export const saveSubmissions = async (
+  submissions: SubmissionRecord[]
+): Promise<void> => {
   if (submissions.length === 0) return;
+
   const rows = submissions.map(fromSubmission);
-  const { error } = await supabase.from('submissions').upsert(rows, { onConflict: 'id' });
-  if (error) console.error('Failed to save submissions', error);
+
+  const { error } = await supabase
+    .from('submissions')
+    .upsert(rows, { onConflict: 'id' });
+
+  if (error) {
+    console.error('Failed to save submissions', error);
+    throw new Error(error.message || 'Failed to save submissions');
+  }
 };
 
-export const upsertSubmission = async (submission: SubmissionRecord): Promise<void> => {
+export const upsertSubmission = async (
+  submission: SubmissionRecord
+): Promise<void> => {
   const { error } = await supabase
     .from('submissions')
     .upsert(fromSubmission(submission), { onConflict: 'id' });
-  if (error) console.error('Failed to upsert submission', error);
+
+  if (error) {
+    console.error('Failed to upsert submission', error);
+    throw new Error(error.message || 'Failed to save submission');
+  }
 };
 
 // Actually deletes a single submission from Supabase (same reasoning as
 // deleteRequisition — saveSubmissions() can only add/update, never remove).
-export const deleteSubmission = async (submissionId: string): Promise<void> => {
-  const { error } = await supabase.from('submissions').delete().eq('id', submissionId);
-  if (error) console.error('Failed to delete submission', error);
+export const deleteSubmission = async (
+  submissionId: string
+): Promise<void> => {
+  const { error } = await supabase
+    .from('submissions')
+    .delete()
+    .eq('id', submissionId);
+
+  if (error) {
+    console.error('Failed to delete submission', error);
+    throw new Error(error.message || 'Failed to delete submission');
+  }
 };
 
 /* =========================================================================
@@ -442,25 +532,49 @@ export const getStoredExtensions = async (): Promise<ExtensionRequest[]> => {
     .from('extension_requests')
     .select('*')
     .order('created_at', { ascending: false });
+
   if (error) {
     console.error('Failed to fetch extension requests', error);
-    throw new Error(error.message || 'Failed to fetch extension requests');
+    throw new Error(
+      error.message || 'Failed to fetch extension requests'
+    );
   }
+
   return (data ?? []).map(toExtension);
 };
 
-export const saveExtensions = async (extensions: ExtensionRequest[]): Promise<void> => {
+export const saveExtensions = async (
+  extensions: ExtensionRequest[]
+): Promise<void> => {
   if (extensions.length === 0) return;
+
   const rows = extensions.map(fromExtension);
-  const { error } = await supabase.from('extension_requests').upsert(rows, { onConflict: 'id' });
-  if (error) console.error('Failed to save extension requests', error);
+
+  const { error } = await supabase
+    .from('extension_requests')
+    .upsert(rows, { onConflict: 'id' });
+
+  if (error) {
+    console.error('Failed to save extension requests', error);
+    throw new Error(
+      error.message || 'Failed to save extension requests'
+    );
+  }
 };
 
-export const upsertExtension = async (extension: ExtensionRequest): Promise<void> => {
+export const upsertExtension = async (
+  extension: ExtensionRequest
+): Promise<void> => {
   const { error } = await supabase
     .from('extension_requests')
     .upsert(fromExtension(extension), { onConflict: 'id' });
-  if (error) console.error('Failed to upsert extension request', error);
+
+  if (error) {
+    console.error('Failed to upsert extension request', error);
+    throw new Error(
+      error.message || 'Failed to save extension request'
+    );
+  }
 };
 
 /* =========================================================================
@@ -472,18 +586,34 @@ export const getStoredDefaulterNotices = async (): Promise<DefaulterNotice[]> =>
     .from('defaulter_notices')
     .select('*')
     .order('sent_at', { ascending: false });
+
   if (error) {
     console.error('Failed to fetch defaulter notices', error);
-    throw new Error(error.message || 'Failed to fetch defaulter notices');
+    throw new Error(
+      error.message || 'Failed to fetch defaulter notices'
+    );
   }
+
   return (data ?? []).map(toNotice);
 };
 
-export const saveDefaulterNotices = async (notices: DefaulterNotice[]): Promise<void> => {
+export const saveDefaulterNotices = async (
+  notices: DefaulterNotice[]
+): Promise<void> => {
   if (notices.length === 0) return;
+
   const rows = notices.map(fromNotice);
-  const { error } = await supabase.from('defaulter_notices').upsert(rows, { onConflict: 'id' });
-  if (error) console.error('Failed to save defaulter notices', error);
+
+  const { error } = await supabase
+    .from('defaulter_notices')
+    .upsert(rows, { onConflict: 'id' });
+
+  if (error) {
+    console.error('Failed to save defaulter notices', error);
+    throw new Error(
+      error.message || 'Failed to save defaulter notices'
+    );
+  }
 };
 
 /* =========================================================================
@@ -496,35 +626,70 @@ export const getStoredBunches = async (): Promise<FieldUnitBunch[]> => {
     .from('field_unit_bunches')
     .select('*')
     .order('created_at', { ascending: false });
+
   if (error) {
     console.error('Failed to fetch field unit bunches', error);
-    throw new Error(error.message || 'Failed to fetch field unit bunches');
+    throw new Error(
+      error.message || 'Failed to fetch field unit bunches'
+    );
   }
+
   return (data ?? []).map(toBunch);
 };
 
 // Upserts the full list passed in (mirrors saveRequisitions/saveExtensions).
-export const saveBunches = async (bunches: FieldUnitBunch[]): Promise<void> => {
+export const saveBunches = async (
+  bunches: FieldUnitBunch[]
+): Promise<void> => {
   if (bunches.length === 0) return;
+
   const rows = bunches.map(fromBunch);
-  const { error } = await supabase.from('field_unit_bunches').upsert(rows, { onConflict: 'id' });
-  if (error) console.error('Failed to save field unit bunches', error);
+
+  const { error } = await supabase
+    .from('field_unit_bunches')
+    .upsert(rows, { onConflict: 'id' });
+
+  if (error) {
+    console.error('Failed to save field unit bunches', error);
+    throw new Error(
+      error.message || 'Failed to save field unit bunches'
+    );
+  }
 };
 
 // Prefer this for a single create/update — avoids re-sending the whole table.
-export const upsertBunch = async (bunch: FieldUnitBunch): Promise<void> => {
+export const upsertBunch = async (
+  bunch: FieldUnitBunch
+): Promise<void> => {
   const { error } = await supabase
     .from('field_unit_bunches')
     .upsert(fromBunch(bunch), { onConflict: 'id' });
-  if (error) console.error('Failed to upsert field unit bunch', error);
+
+  if (error) {
+    console.error('Failed to upsert field unit bunch', error);
+    throw new Error(
+      error.message || 'Failed to save field unit bunch'
+    );
+  }
 };
 
 // Actual delete — saveBunches()/the array-sync effect only ever upserts, so
 // this is the only path that removes a bunch for every user, not just the
 // one who deleted it locally (same reasoning as deleteRequisition above).
-export const deleteBunch = async (bunchId: string): Promise<void> => {
-  const { error } = await supabase.from('field_unit_bunches').delete().eq('id', bunchId);
-  if (error) console.error('Failed to delete field unit bunch', error);
+export const deleteBunch = async (
+  bunchId: string
+): Promise<void> => {
+  const { error } = await supabase
+    .from('field_unit_bunches')
+    .delete()
+    .eq('id', bunchId);
+
+  if (error) {
+    console.error('Failed to delete field unit bunch', error);
+    throw new Error(
+      error.message || 'Failed to delete field unit bunch'
+    );
+  }
 };
 
 /* =========================================================================
@@ -533,9 +698,8 @@ export const deleteBunch = async (bunchId: string): Promise<void> => {
    Deliberately single-record only (get/upsert/delete) — NO whole-array
    save function. A repository file can carry a base64 attachment several
    MB in size; a whole-array sync (as requisitions/submissions used to do)
-   would re-send every file's full payload on every single change, and
-   that combined payload only grows — see the postmortem in App.tsx's
-   comments above the (removed) requisitions/submissions sync effects.
+   would re-send every file's full payload on every single change, and that
+   combined payload only grows.
    ========================================================================= */
 
 export const getStoredRepositoryFiles = async (): Promise<RepositoryFile[]> => {
@@ -543,23 +707,46 @@ export const getStoredRepositoryFiles = async (): Promise<RepositoryFile[]> => {
     .from('desk_repository_files')
     .select('*')
     .order('uploaded_at', { ascending: false });
+
   if (error) {
     console.error('Failed to fetch repository files', error);
-    throw new Error(error.message || 'Failed to fetch repository files');
+    throw new Error(
+      error.message || 'Failed to fetch repository files'
+    );
   }
+
   return (data ?? []).map(toRepositoryFile);
 };
 
-export const upsertRepositoryFile = async (file: RepositoryFile): Promise<void> => {
+export const upsertRepositoryFile = async (
+  file: RepositoryFile
+): Promise<void> => {
   const { error } = await supabase
     .from('desk_repository_files')
     .upsert(fromRepositoryFile(file), { onConflict: 'id' });
-  if (error) console.error('Failed to upsert repository file', error);
+
+  if (error) {
+    console.error('Failed to upsert repository file', error);
+    throw new Error(
+      error.message || 'Failed to save repository file'
+    );
+  }
 };
 
-export const deleteRepositoryFile = async (fileId: string): Promise<void> => {
-  const { error } = await supabase.from('desk_repository_files').delete().eq('id', fileId);
-  if (error) console.error('Failed to delete repository file', error);
+export const deleteRepositoryFile = async (
+  fileId: string
+): Promise<void> => {
+  const { error } = await supabase
+    .from('desk_repository_files')
+    .delete()
+    .eq('id', fileId);
+
+  if (error) {
+    console.error('Failed to delete repository file', error);
+    throw new Error(
+      error.message || 'Failed to delete repository file'
+    );
+  }
 };
 
 /* =========================================================================
@@ -572,7 +759,7 @@ export const deleteRepositoryFile = async (fileId: string): Promise<void> => {
    so raw password hashes never touch the browser.
    ========================================================================= */
 
-const CURRENT_USER_KEY = 'dte_portal_current_user_session'; // session only, not data storage
+const CURRENT_USER_KEY = 'dte_portal_current_user_session';
 
 export const getStoredUser = (): UserSession | null => {
   try {
@@ -585,7 +772,10 @@ export const getStoredUser = (): UserSession | null => {
 
 export const saveCurrentUser = (user: UserSession): void => {
   try {
-    sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+    sessionStorage.setItem(
+      CURRENT_USER_KEY,
+      JSON.stringify(user)
+    );
   } catch (e) {
     console.error('Failed to save current user session', e);
   }
@@ -605,15 +795,19 @@ export const verifyUserCredentials = async (
 ): Promise<boolean> => {
   if (!identifier || !enteredPassword) return false;
 
-  const { data, error } = await supabase.rpc('verify_password_any', {
-    p_identifiers: [identifier],
-    p_password: enteredPassword
-  });
+  const { data, error } = await supabase.rpc(
+    'verify_password_any',
+    {
+      p_identifiers: [identifier],
+      p_password: enteredPassword
+    }
+  );
 
   if (error) {
     console.error('Failed to verify credentials', error);
     return false;
   }
+
   return data === true;
 };
 
@@ -623,6 +817,7 @@ export const saveUserPassword = async (
   aliases: string[] = []
 ): Promise<boolean> => {
   const cleanPass = newPassword.trim();
+
   if (!cleanPass) return false;
 
   const allIds = Array.from(
@@ -632,17 +827,22 @@ export const saveUserPassword = async (
         .map((k) => k.trim().toLowerCase())
     )
   );
+
   if (allIds.length === 0) return false;
 
-  const { data, error } = await supabase.rpc('save_password_any', {
-    p_identifiers: allIds,
-    p_password: cleanPass
-  });
+  const { data, error } = await supabase.rpc(
+    'save_password_any',
+    {
+      p_identifiers: allIds,
+      p_password: cleanPass
+    }
+  );
 
   if (error) {
     console.error('Failed to save user password', error);
     return false;
   }
+
   return data === true;
 };
 
@@ -653,13 +853,34 @@ export const saveUserPassword = async (
 
 export const resetToInitialData = async (): Promise<void> => {
   try {
-    await supabase.from('requisitions').delete().neq('id', '');
-    await supabase.from('submissions').delete().neq('id', '');
-    await supabase.from('extension_requests').delete().neq('id', '');
-    await supabase.from('defaulter_notices').delete().neq('id', '');
-    await supabase.from('app_credentials').delete().neq('identifier', '');
+    await supabase
+      .from('requisitions')
+      .delete()
+      .neq('id', '');
+
+    await supabase
+      .from('submissions')
+      .delete()
+      .neq('id', '');
+
+    await supabase
+      .from('extension_requests')
+      .delete()
+      .neq('id', '');
+
+    await supabase
+      .from('defaulter_notices')
+      .delete()
+      .neq('id', '');
+
+    await supabase
+      .from('app_credentials')
+      .delete()
+      .neq('identifier', '');
+
     clearCurrentUser();
   } catch (e) {
     console.error('Failed to reset data', e);
+    throw e;
   }
 };
