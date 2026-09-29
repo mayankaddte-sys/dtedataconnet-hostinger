@@ -9,7 +9,7 @@ const PORTAL_URL = 'https://compliance-dteup.in';
 
 export interface EmailDispatchLog {
   id: string;
-  type: 'NEW_REQUISITION' | 'AUTO_REMINDER_48H' | 'AUTO_REMINDER_24H' | 'OVERDUE_ALERT' | 'DEFAULTER_NOTICE' | 'MANUAL_REMINDER';
+  type: 'NEW_REQUISITION' | 'AUTO_REMINDER_48H' | 'AUTO_REMINDER_24H' | 'OVERDUE_ALERT' | 'DEFAULTER_NOTICE' | 'MANUAL_REMINDER' | 'REQUISITION_AMENDED';
   requisitionId: string;
   requisitionNumber: string;
   requisitionTitle: string;
@@ -452,4 +452,96 @@ export const dispatchManualEmailReminder = async (
     failedCount,
     logs: results
   };
+};
+
+
+// Tells the targeted units that a desk amended an already-issued demand
+// (new letter, new/changed fields, new sheet/form, changed deadline...).
+// Best-effort: a failure here must never decide whether the edit was saved.
+export const dispatchRequisitionAmendmentEmails = async (
+  req: Requisition,
+  targetUnits: FieldUnit[],
+  changes: string[],
+  senderDesk?: DirectorateDesk,
+  requestedResubmission = false
+): Promise<{ success: boolean; sentCount: number; failedCount: number; logs: EmailDispatchLog[] }> => {
+  if (targetUnits.length === 0) {
+    return { success: true, sentCount: 0, failedCount: 0, logs: [] };
+  }
+
+  const settings = getAutoEmailSettings();
+  const existingLogs = getStoredEmailLogs();
+  const senderEmail = senderDesk?.email || settings.senderEmail;
+  const senderDeskName = senderDesk?.name || req.deskName || 'प्रशिक्षण निदेशालय, उ.प्र.';
+
+  const esc = (t: string) =>
+    t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const subject = `[मांग में संशोधन] ${req.title} (${req.requisitionNumber})`;
+  const deadlineStr = new Date(req.deadline).toLocaleString('hi-IN', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  });
+  const changeLines = changes.map((c) => `• ${c}`).join('\n');
+  const resubmitNote = requestedResubmission
+    ? '\n\nजिन इकाइयों ने पूर्व में डेटा भेजा है, उनसे संशोधित/पुनः सबमिशन अपेक्षित है।'
+    : '';
+  const message = `सादर, ${senderDeskName} द्वारा जारी मांग में संशोधन किया गया है।\n\nविषय: ${req.title}\nसंदर्भ संख्या: ${req.requisitionNumber}\nअंतिम तिथि: ${deadlineStr}\n\nसंशोधन:\n${changeLines}${resubmitNote}\n\nकृपया पोर्टल पर लॉगिन कर विवरण देखें: ${PORTAL_URL}`;
+
+  const recipients = targetUnits.map((unit) => ({
+    unit,
+    email: unit.email.includes('@') ? unit.email : `${unit.code.toLowerCase()}@vppup.in`
+  }));
+
+  const htmlChanges = changes.map((c) => `<li>${esc(c)}</li>`).join('');
+  const outgoing: OutgoingEmail[] = recipients.map(({ email }) => ({
+    to: email,
+    subject,
+    text: message,
+    html: `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+          <h3 style="margin-bottom: 4px;">मांग में संशोधन / Requisition Amended</h3>
+          <p><strong>${esc(req.title)}</strong></p>
+          <p>संदर्भ संख्या: ${esc(req.requisitionNumber)}<br/>
+             अंतिम तिथि: ${esc(deadlineStr)}</p>
+          <p style="margin-bottom:2px;">संशोधन:</p>
+          <ul style="margin-top:2px;">${htmlChanges}</ul>
+          ${requestedResubmission ? '<p><strong>पूर्व में डेटा भेज चुकी इकाइयों से संशोधित/पुनः सबमिशन अपेक्षित है।</strong></p>' : ''}
+          <p><a href="${PORTAL_URL}" style="color: #2563eb;">पोर्टल पर जाएं / Visit Portal</a></p>
+          <p style="font-size: 12px; color: #64748b;">प्रेषक: ${esc(senderDeskName)}</p>
+        </div>
+      `
+  }));
+
+  const sendResults = await sendReminderEmailBatch(outgoing);
+  const stamp = Date.now();
+
+  const results: EmailDispatchLog[] = recipients.map(({ unit, email }, i) => {
+    const r = sendResults[i] || { success: false, error: 'No result returned for this recipient.' };
+    return {
+      id: `amend_${req.id}_${unit.id}_${stamp}`,
+      type: 'REQUISITION_AMENDED',
+      requisitionId: req.id,
+      requisitionNumber: req.requisitionNumber,
+      requisitionTitle: req.title,
+      recipientUnitId: unit.id,
+      recipientName: unit.name,
+      recipientEmail: email,
+      recipientType: unit.type,
+      recipientDistrict: unit.district,
+      senderDeskName,
+      senderEmail,
+      subject,
+      bodySnippet: message,
+      dispatchedAt: new Date().toISOString(),
+      status: r.success ? 'DELIVERED' : 'FAILED',
+      error: r.success ? undefined : r.error
+    };
+  });
+
+  saveStoredEmailLogs([...results, ...existingLogs].slice(0, 500));
+
+  const sentCount = results.filter((l) => l.status === 'DELIVERED').length;
+  const failedCount = results.filter((l) => l.status === 'FAILED').length;
+  return { success: failedCount === 0, sentCount, failedCount, logs: results };
 };
