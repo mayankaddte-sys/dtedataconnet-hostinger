@@ -53,7 +53,7 @@ import { RepositoryView } from './components/views/RepositoryView';
 import { ChangePasswordModal } from './components/auth/ChangePasswordModal';
 import { AutoEmailMonitorModal } from './components/modals/AutoEmailMonitorModal';
 import { ReminderDispatchSuccessModal } from './components/modals/ReminderDispatchSuccessModal';
-import { runAutomaticEmailReminderCycle, dispatchManualEmailReminder, dispatchNewRequisitionEmails, EmailDispatchLog } from './lib/emailReminderEngine';
+import { runAutomaticEmailReminderCycle, dispatchManualEmailReminder, dispatchNewRequisitionEmails, dispatchRequisitionAmendmentEmails, EmailDispatchLog } from './lib/emailReminderEngine';
 
 export default function App() {
   // Data state — starts empty, populated by the effect below.
@@ -291,6 +291,88 @@ export default function App() {
     } catch (e: any) {
       console.error('Failed to save requisition to backend', e);
       window.alert(`डेटा मांग सुरक्षित नहीं हो सकी।\n\n${e?.message || 'कृपया पुनः प्रयास करें।'}`);
+    }
+  };
+
+  // Desk amends an already-issued demand (letters / fields / sheets & forms /
+  // deadline...). Same rule as handleSaveRequisition: confirm the DB write
+  // BEFORE touching local state, and treat email as best-effort.
+  const handleEditRequisition = async (
+    updated: Requisition,
+    opts: { notifyUnits: boolean; requestResubmission: boolean; changes: string[] }
+  ) => {
+    // Only the owning desk (or the Directorate admin) may amend a demand.
+    const canEdit =
+      currentUser?.role === 'DIRECTORATE_ADMIN' ||
+      (currentUser?.role === 'DIRECTORATE_DESK' && currentUser.deskId === updated.deskId);
+    if (!canEdit) {
+      window.alert('केवल संबंधित डेस्क अथवा निदेशालय प्रशासक ही इस मांग में संशोधन कर सकते हैं।');
+      throw new Error('Not allowed');
+    }
+
+    try {
+      await upsertRequisition(updated);
+    } catch (e: any) {
+      console.error('Failed to save edited requisition', e);
+      window.alert(`मांग में संशोधन सुरक्षित नहीं हो सका।\n\n${e?.message || 'कृपया पुनः प्रयास करें।'}`);
+      throw e;
+    }
+
+    setRequisitions(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+    setSelectedRequisition(prev => (prev && prev.id === updated.id ? updated : prev));
+
+    // Optional: send already-submitted units back for revision so they can
+    // answer the new fields / sheets. Their existing data is kept as-is.
+    if (opts.requestResubmission) {
+      const nowIso = new Date().toISOString();
+      const note = 'मांग में संशोधन (नया फ़ील्ड/सामग्री जोड़ी गई) — कृपया संशोधित विवरण पुनः प्रस्तुत करें।';
+      const toRevise = submissions.filter(
+        s => s.requisitionId === updated.id && s.status !== 'REVISION_REQUESTED'
+      );
+      const revised: SubmissionRecord[] = toRevise.map(s => ({
+        ...s,
+        status: 'REVISION_REQUESTED',
+        revisionNotes: note,
+        deskReviewedAt: nowIso,
+        deskReviewedBy: currentUser?.displayName || ''
+      }));
+
+      const saved: SubmissionRecord[] = [];
+      let failed = 0;
+      for (const sub of revised) {
+        try {
+          await upsertSubmission(sub);
+          saved.push(sub);
+        } catch (e) {
+          failed++;
+          console.error('Failed to mark submission for resubmission', sub.id, e);
+        }
+      }
+      if (saved.length > 0) {
+        const byId = new Map(saved.map(s => [s.id, s]));
+        setSubmissions(prev => prev.map(s => byId.get(s.id) || s));
+      }
+      if (failed > 0) {
+        window.alert(`${failed} इकाइयों की स्थिति "पुनः सबमिशन" में नहीं बदल सकी। कृपया उन्हें अलग से Revision Request करें।`);
+      }
+    }
+
+    if (opts.notifyUnits) {
+      const senderDesk = desks.find(d => d.id === updated.deskId);
+      const targetUnits = fieldUnits.filter(u => updated.targetUnitIds.includes(u.id));
+      dispatchRequisitionAmendmentEmails(
+        updated,
+        targetUnits,
+        opts.changes,
+        senderDesk,
+        opts.requestResubmission
+      )
+        .then(result => {
+          if (result.failedCount > 0) {
+            console.error(`Amendment email: ${result.failedCount} of ${result.sentCount + result.failedCount} failed to send`);
+          }
+        })
+        .catch(e => console.error('Failed to dispatch amendment emails', e));
     }
   };
 
@@ -769,6 +851,13 @@ export default function App() {
                 ? handleDeleteSubmission
                 : undefined
             }
+            onEditRequisition={
+              currentUser.role === 'DIRECTORATE_ADMIN' ||
+              (currentUser.role === 'DIRECTORATE_DESK' && currentUser.deskId === selectedRequisition.deskId)
+                ? handleEditRequisition
+                : undefined
+            }
+            editorName={currentUser.displayName}
           />
         ) : (
           <>
