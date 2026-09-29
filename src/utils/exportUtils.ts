@@ -42,6 +42,9 @@ export function exportRequisitionDataToCSV(
     'Officer Designation',
     'Officer Contact',
     ...customFieldHeaders,
+    ...(requisition.additionalResources || [])
+      .filter(r => r.responseRequired)
+      .map(r => escapeCSV(`${r.title} (Sheet/Form response)`)),
     'Attached Document',
     'Google Sheet / Form Link',
     'Desk Review Status',
@@ -75,6 +78,12 @@ export function exportRequisitionDataToCSV(
       sub ? escapeCSV(sub.officerDesignation || '') : '""',
       sub ? escapeCSV(sub.officerContact || '') : '""',
       ...customValues,
+      ...(requisition.additionalResources || [])
+        .filter(r => r.responseRequired)
+        .map(r => {
+          const v = sub?.data?.[`__res_${r.id}`];
+          return v === undefined ? '""' : escapeCSV(v);
+        }),
       sub?.uploadedDocumentName ? escapeCSV(sub.uploadedDocumentName) : '""',
       sub?.googleSheetSubmittedUrl ? escapeCSV(sub.googleSheetSubmittedUrl) : '""',
       sub?.deskReviewedBy ? escapeCSV(`${sub.status} by ${sub.deskReviewedBy}`) : '""',
@@ -364,4 +373,3 @@ function downloadCSVFile(content: string, filename: string) {
   document.body.removeChild(link);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-
