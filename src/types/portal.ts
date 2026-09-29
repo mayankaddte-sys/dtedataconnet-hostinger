@@ -1,20 +1,77 @@
-export type UserRole = 'DIRECTORATE_ADMIN' | 'DIRECTORATE_DESK' | 'FIELD_JD' | 'FIELD_ITI';
+export type UserRole =
+  | 'DIRECTORATE_ADMIN'
+  | 'DIRECTORATE_DESK'
+  | 'FIELD_JD'
+  | 'FIELD_ITI';
 
-export type PortalNavMenu = 
-  | 'DASHBOARD' 
-  | 'REQUISITIONS' 
-  | 'SUBMISSIONS_REPORT' 
-  | 'EXTENSIONS' 
-  | 'NOTICES' 
-  | 'DIRECTORY' 
+export type PortalNavMenu =
+  | 'DASHBOARD'
+  | 'REQUISITIONS'
+  | 'SUBMISSIONS_REPORT'
+  | 'EXTENSIONS'
+  | 'NOTICES'
+  | 'DIRECTORY'
   | 'REPOSITORY'
   | 'DIRECTOR_VIEW';
 
-export type PriorityLevel = 'URGENT' | 'HIGH' | 'NORMAL' | 'ROUTINE';
+export type PriorityLevel =
+  | 'URGENT'
+  | 'HIGH'
+  | 'NORMAL'
+  | 'ROUTINE';
 
-export type RequisitionMode = 'CUSTOM_FORM' | 'GOOGLE_SHEET' | 'GOOGLE_FORM' | 'HYBRID';
+export type RequisitionMode =
+  | 'CUSTOM_FORM'
+  | 'GOOGLE_SHEET'
+  | 'GOOGLE_FORM'
+  | 'HYBRID';
 
-export type SubmissionStatus = 'PENDING' | 'SUBMITTED' | 'LATE_SUBMITTED' | 'OVERDUE' | 'UNDER_REVIEW' | 'APPROVED' | 'REVISION_REQUESTED';
+export type SubmissionStatus =
+  | 'PENDING'
+  | 'SUBMITTED'
+  | 'LATE_SUBMITTED'
+  | 'OVERDUE'
+  | 'UNDER_REVIEW'
+  | 'APPROVED'
+  | 'REVISION_REQUESTED';
+
+/* ============================================================
+   REQUISITION UPDATE / VERSIONING
+   ============================================================ */
+
+/**
+ * Defines which existing submissions are affected by
+ * a requisition update.
+ *
+ * ALL
+ * ----------------
+ * The update applies to all targeted units.
+ *
+ * PENDING_ONLY
+ * ----------------
+ * The update applies only to units which have not
+ * submitted their response yet.
+ *
+ * ALL_REQUIRE_RESUBMISSION
+ * ----------------
+ * The update requires all targeted units to submit
+ * a fresh response.
+ *
+ * IMPORTANT:
+ * Existing submissions are never deleted by this mechanism.
+ */
+export type RequisitionUpdateApplyTo =
+  | 'ALL'
+  | 'PENDING_ONLY'
+  | 'ALL_REQUIRE_RESUBMISSION';
+
+/**
+ * Lifecycle state of a requisition update.
+ */
+export type RequisitionUpdateStatus =
+  | 'DRAFT'
+  | 'PUBLISHED'
+  | 'CANCELLED';
 
 export interface DirectorateDesk {
   id: string;
@@ -45,15 +102,15 @@ export interface FieldUnit {
   totalSeats?: number;
 }
 
-export type CustomFieldType = 
-  | 'text' 
-  | 'textarea' 
-  | 'number' 
-  | 'date' 
-  | 'select' 
-  | 'radio' 
-  | 'checkbox' 
-  | 'file' 
+export type CustomFieldType =
+  | 'text'
+  | 'textarea'
+  | 'number'
+  | 'date'
+  | 'select'
+  | 'radio'
+  | 'checkbox'
+  | 'file'
   | 'table_grid';
 
 export interface TableColumnConfig {
@@ -71,10 +128,10 @@ export interface CustomFieldDefinition {
   placeholder?: string;
   required: boolean;
   helpText?: string;
-  options?: string[]; // for select/radio
+  options?: string[];
   min?: number;
   max?: number;
-  unit?: string; // e.g. "₹ in Lakhs", "Students", "Percent %"
+  unit?: string;
   tableColumns?: TableColumnConfig[];
 }
 
@@ -91,13 +148,13 @@ export interface GoogleFormConfig {
   instructions: string;
 }
 
-export type TargetScopeType = 
-  | 'ALL_FIELD_UNITS' 
-  | 'ALL_JD_OFFICES' 
-  | 'ALL_ITIS' 
-  | 'SELECTED_JD_OFFICES' 
-  | 'SELECTED_ITIS' 
-  | 'SELECTED_ZONES' 
+export type TargetScopeType =
+  | 'ALL_FIELD_UNITS'
+  | 'ALL_JD_OFFICES'
+  | 'ALL_ITIS'
+  | 'SELECTED_JD_OFFICES'
+  | 'SELECTED_ITIS'
+  | 'SELECTED_ZONES'
   | 'SAVED_BUNCH'
   | 'SPECIFIC_UNITS';
 
@@ -110,15 +167,15 @@ export interface RepositoryFile {
   id: string;
   deskId: string;
   deskName?: string;
-  category: string; // e.g. "परिपत्र (Circulars)", "प्रारूप (Formats)"
+  category: string;
   title: string;
   description?: string;
   fileName: string;
-  fileUrl: string; // base64 data URI
-  fileSize: number; // bytes
-  fileType?: string; // mime type
+  fileUrl: string;
+  fileSize: number;
+  fileType?: string;
   uploadedByName?: string;
-  uploadedAt: string; // ISO string
+  uploadedAt: string;
 }
 
 // A directorate-defined, reusable named group of field units (any mix of
@@ -130,11 +187,11 @@ export interface FieldUnitBunch {
   id: string;
   name: string;
   description?: string;
-  unitIds: string[]; // mix of JD_OFFICE + ITI ids
+  unitIds: string[];
   createdByDeskId?: string;
   createdByDeskName?: string;
-  createdAt: string; // ISO string
-  updatedAt?: string; // ISO string
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface RequisitionForwardEntry {
@@ -142,94 +199,233 @@ export interface RequisitionForwardEntry {
   unitName: string;
   forwardedByJdId: string;
   forwardedByJdName: string;
-  forwardedAt: string; // ISO string
+  forwardedAt: string;
 }
+
+/* ============================================================
+   REQUISITION
+   ============================================================ */
 
 export interface Requisition {
   id: string;
-  requisitionNumber: string; // e.g., "DTE/EXAM/2026/08-114"
+  requisitionNumber: string;
   title: string;
   description: string;
   deskId: string;
   deskName: string;
   priority: PriorityLevel;
-  priorityLabel?: string; // e.g. "Assembly Question - Immediate", "Audit Observation"
+  priorityLabel?: string;
   isAssemblyQuestion?: boolean;
   mode: RequisitionMode;
-  
+
   // Timing & Cutoff restriction
-  createdAt: string; // ISO string
-  deadline: string; // ISO string with time
-  isStrictCutoff: boolean; // if true, form blocks submissions past deadline
+  createdAt: string;
+  deadline: string;
+  isStrictCutoff: boolean;
   allowLateSubmissionWithReason: boolean;
-  
+
   // Target units
   targetScope: TargetScopeType;
   targetZones?: string[];
   targetDistricts?: string[];
-  targetUnitIds: string[]; // list of field unit IDs targeted
-  targetBunchId?: string; // set when targetScope === 'SAVED_BUNCH'
-  targetBunchName?: string; // snapshot of the bunch name at issue time, for display even if the bunch is later renamed/deleted
+  targetUnitIds: string[];
+  targetBunchId?: string;
+  targetBunchName?: string;
 
-  // Forwarding: when a requisition is issued to a JD office (not directly to
-  // ITIs), the JD can relay it to selected/all ITIs in their mandal. Every
-  // forward appends the newly-added unit IDs to targetUnitIds (so they show
-  // up via the existing targeting logic) and logs an entry here for audit.
+  // Forwarding
   forwardLog?: RequisitionForwardEntry[];
-  
+
   // Configuration
   customFields?: CustomFieldDefinition[];
   googleSheetConfig?: GoogleSheetConfig;
   googleFormConfig?: GoogleFormConfig;
-  
+
   // Requirements
   requireOfficerDeclaration: boolean;
   requireOfficialSealUpload: boolean;
   attachmentNoticeDocUrl?: string;
-  
+
   // Attached Official Orders / Guidelines / Shasanadesh
   orderDocumentName?: string;
   orderDocumentUrl?: string;
   orderDocumentSize?: string;
-  orderReferenceNumber?: string; // e.g. "शासनादेश सं. 142/2026/88-व्या.शि."
-  orderDate?: string; // Date of the Government Order
+  orderReferenceNumber?: string;
+  orderDate?: string;
 
-  // Optional attachment within CUSTOM_FORM/HYBRID mode: desk uploads a
-  // blank template (PDF/Excel/Word)
-  // for ITIs to download, fill offline, and re-upload — see mode above.
+  // Optional attachment within CUSTOM_FORM/HYBRID mode
   performaFileName?: string;
-  performaFileUrl?: string; // base64 data: URL
-  performaFileSize?: number; // bytes
+  performaFileUrl?: string;
+  performaFileSize?: number;
 
   status: 'ACTIVE' | 'ARCHIVED' | 'CLOSED';
 }
+
+/* ============================================================
+   REQUISITION UPDATE / VERSION
+   ============================================================ */
+
+/**
+ * A non-destructive update/version of an existing requisition.
+ *
+ * IMPORTANT:
+ * This interface does NOT replace or modify the original
+ * Requisition record.
+ *
+ * Every update is stored separately so that:
+ *
+ * Version 1
+ * Version 2
+ * Version 3
+ * ...
+ *
+ * can coexist with the original requisition and its
+ * historical submissions.
+ */
+export interface RequisitionUpdate {
+  id: string;
+
+  /**
+   * Parent requisition.
+   */
+  requisitionId: string;
+
+  /**
+   * Sequential version number for this requisition.
+   *
+   * Example:
+   * 1 = original/update version
+   * 2 = first subsequent update
+   * 3 = second subsequent update
+   */
+  versionNumber: number;
+
+  /**
+   * Human-readable title of the update.
+   *
+   * Example:
+   * "Deadline Extended"
+   * "Revised Performa"
+   * "Additional Information Required"
+   */
+  updateTitle: string;
+
+  /**
+   * Detailed explanation of the update.
+   */
+  updateDescription?: string;
+
+  /**
+   * Defines whom the update affects.
+   */
+  applyTo: RequisitionUpdateApplyTo;
+
+  /**
+   * Whether a new submission is required.
+   *
+   * Existing submissions are NOT deleted.
+   */
+  requiresResubmission: boolean;
+
+  /**
+   * Complete snapshot of the requisition configuration
+   * at the time this update was created.
+   *
+   * Stored as JSON text in the database.
+   */
+  requisitionSnapshot?: string;
+
+  /**
+   * JSON text describing the fields/items changed.
+   *
+   * Example:
+   *
+   * [
+   *   "Deadline changed",
+   *   "Additional field added",
+   *   "Revised performa uploaded"
+   * ]
+   */
+  changedFields?: string;
+
+  /**
+   * ISO timestamp.
+   */
+  createdAt: string;
+
+  /**
+   * User who created the update.
+   */
+  createdByUserId?: string;
+  createdByName?: string;
+
+  /**
+   * Directorate desk responsible for the update.
+   */
+  createdByDeskId?: string;
+  createdByDeskName?: string;
+
+  /**
+   * Update lifecycle state.
+   */
+  status: RequisitionUpdateStatus;
+}
+
+/* ============================================================
+   TABLE / SUBMISSION DATA
+   ============================================================ */
 
 export interface TableRowData {
   [columnId: string]: string | number;
 }
 
 export interface FieldSubmissionData {
-  [fieldId: string]: string | number | boolean | string[] | TableRowData[];
+  [fieldId: string]:
+    | string
+    | number
+    | boolean
+    | string[]
+    | TableRowData[];
 }
+
+/* ============================================================
+   SUBMISSION RECORD
+   ============================================================ */
 
 export interface SubmissionRecord {
   id: string;
+
+  /**
+   * Original requisition to which this submission belongs.
+   */
   requisitionId: string;
+
+  /**
+   * Optional reference to the requisition update/version
+   * against which this submission was made.
+   *
+   * OPTIONAL intentionally:
+   *
+   * - Existing submissions continue to work.
+   * - Existing database records remain valid.
+   * - No migration is required merely to load old submissions.
+   */
+  submissionUpdateId?: string;
+
   fieldUnitId: string;
   fieldUnitName: string;
   fieldUnitType: 'JD_OFFICE' | 'ITI';
   fieldUnitZone: string;
   fieldUnitDistrict: string;
-  
-  submittedAt: string; // ISO string
+
+  submittedAt: string;
   submittedByOfficer: string;
   officerDesignation: string;
   officerContact: string;
-  
+
   status: SubmissionStatus;
   isLate: boolean;
   lateJustification?: string;
-  
+
   // Data payloads
   data: FieldSubmissionData;
   googleSheetSubmittedUrl?: string;
@@ -241,9 +437,7 @@ export interface SubmissionRecord {
   digitalSignatureDataUrl?: string;
   signatureType?: 'UPLOADED_DOCUMENT' | 'FINGER_DRAWN' | 'BOTH';
 
-  // Optional performa attachment: the filled template the ITI uploaded back.
-  // Kept separate from uploadedDocumentName/Url above, which is the
-  // officer's signature/seal proof document — a different purpose.
+  // Optional performa attachment
   performaSubmissionFileName?: string;
   performaSubmissionFileUrl?: string;
 
