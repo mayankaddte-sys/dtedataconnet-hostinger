@@ -13,7 +13,10 @@ export default {
       'custom_fields',
       'google_sheet_config',
       'google_form_config',
-      'forward_log'
+      'forward_log',
+      'additional_letters',
+      'additional_resources',
+      'edit_log'
     ]
   },
   submissions: { pk: 'id', json: ['data'] },
