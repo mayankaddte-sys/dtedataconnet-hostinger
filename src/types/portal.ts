@@ -194,6 +194,45 @@ export interface FieldUnitBunch {
   updatedAt?: string;
 }
 
+// A letter/order/corrigendum a desk attaches to an already-issued demand
+// AFTER the original was created (the original letter stays in
+// Requisition.orderDocument*). Each one is stored with its own reference
+// number/date so field units can see the full letter trail.
+export interface RequisitionLetter {
+  id: string;
+  title: string;
+  referenceNumber?: string;
+  letterDate?: string;
+  fileName?: string;
+  fileUrl?: string;
+  fileSize?: string;
+  addedAt: string;
+  addedByName?: string;
+}
+
+// An extra Google Sheet / Google Form (or any link) a desk adds to a demand
+// after issue. Field units get a response box for each one; their answer is
+// stored inside SubmissionRecord.data under `__res_<id>` so no submissions
+// table change is needed.
+export interface RequisitionResource {
+  id: string;
+  kind: 'GOOGLE_SHEET' | 'GOOGLE_FORM' | 'OTHER_LINK';
+  title: string;
+  url: string;
+  instructions?: string;
+  responseRequired: boolean;
+  addedAt: string;
+  addedByName?: string;
+}
+
+// One line in a demand's amendment history (who changed what, when).
+export interface RequisitionEditLogEntry {
+  id: string;
+  at: string;
+  byName: string;
+  summary: string[];
+}
+
 export interface RequisitionForwardEntry {
   unitId: string;
   unitName: string;
@@ -234,6 +273,11 @@ export interface Requisition {
 
   // Forwarding
   forwardLog?: RequisitionForwardEntry[];
+
+  // Post-issue amendments (added by the desk via "Edit Demand")
+  additionalLetters?: RequisitionLetter[];
+  additionalResources?: RequisitionResource[];
+  editLog?: RequisitionEditLogEntry[];
 
   // Configuration
   customFields?: CustomFieldDefinition[];
