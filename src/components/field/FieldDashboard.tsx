@@ -415,6 +415,15 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
                         </span>
                       )}
 
+                      {(req.editLog?.length || 0) > 0 && (
+                        <span
+                          className="text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full"
+                          title={(req.editLog![req.editLog!.length - 1].summary || []).join('\n')}
+                        >
+                          संशोधित (Updated)
+                        </span>
+                      )}
+
                       {(req.orderDocumentName || req.orderReferenceNumber || req.attachmentNoticeDocUrl) && (
                         <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full flex items-center gap-1">
                           <BookOpen className="w-3 h-3 text-indigo-600" />
