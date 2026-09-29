@@ -243,6 +243,14 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
       return;
     }
 
+    const missingResource = (requisition.additionalResources || []).find(
+      r => r.responseRequired && !String(formData[`__res_${r.id}`] ?? '').trim()
+    );
+    if (missingResource) {
+      alert(`कृपया "${missingResource.title}" का भरा हुआ लिंक / Response ID दर्ज करें।`);
+      return;
+    }
+
     // Signature / signed-letter is only mandatory when the directorate
     // explicitly asked for one on this requisition (requiresSignedLetter).
     // If the desk didn't request it, field units may submit without either.
@@ -500,6 +508,84 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
               </div>
             )}
 
+            {/* SECTION: Letters added later by the desk */}
+            {(requisition.additionalLetters?.length || 0) > 0 && (
+              <div className="bg-white p-4 rounded-xl border border-indigo-200 shadow-xs space-y-2">
+                <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs">
+                  <BookOpen className="w-4 h-4 text-indigo-700" />
+                  <span>निदेशालय द्वारा बाद में जोड़े गए पत्र / निर्देश</span>
+                </div>
+                {requisition.additionalLetters!.map(l => (
+                  <div key={l.id} className="flex items-center justify-between gap-2 p-2.5 bg-indigo-50/60 border border-indigo-100 rounded-lg">
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-900 text-xs truncate">{l.title}</div>
+                      <div className="text-[11px] text-slate-600 font-mono">
+                        {l.referenceNumber && <span>पत्रांक: {l.referenceNumber} </span>}
+                        {l.letterDate && <span>| दिनांक: {l.letterDate}</span>}
+                      </div>
+                    </div>
+                    {l.fileUrl && (
+                      <a
+                        href={l.fileUrl}
+                        download={l.fileName || 'letter'}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shrink-0 flex items-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>पत्र देखें</span>
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* SECTION: Extra Sheets / Forms added later by the desk */}
+            {(requisition.additionalResources || []).map(r => {
+              const key = `__res_${r.id}`;
+              return (
+                <div key={r.id} className="bg-white p-5 rounded-xl border border-teal-200 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between gap-2 pb-2 border-b border-teal-100">
+                    <div className="flex items-center gap-2 text-teal-900 font-bold min-w-0">
+                      <FileSpreadsheet className="w-4 h-4 text-teal-700 shrink-0" />
+                      <span className="truncate">{r.title}</span>
+                      <span className="text-[10px] font-semibold bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded shrink-0">नया</span>
+                    </div>
+                    <a
+                      href={r.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1 bg-teal-100 hover:bg-teal-200 text-teal-800 rounded font-bold text-xs flex items-center gap-1 shrink-0 transition-colors"
+                    >
+                      <span>{r.kind === 'GOOGLE_FORM' ? 'Form खोलें' : r.kind === 'GOOGLE_SHEET' ? 'Sheet खोलें' : 'लिंक खोलें'}</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+
+                  {r.instructions && <p className="text-[11px] text-slate-600 whitespace-pre-line">{r.instructions}</p>}
+
+                  {r.responseRequired && (
+                    <div>
+                      <label className="block font-bold text-slate-800 mb-1">
+                        {r.kind === 'GOOGLE_FORM'
+                          ? 'Google Form Response ID / पावती *'
+                          : 'भरी हुई Sheet / Tab का लिंक *'}
+                      </label>
+                      <input
+                        type="text"
+                        disabled={isLocked}
+                        value={String(formData[key] ?? '')}
+                        onChange={(e) => handleFieldChange(key, e.target.value)}
+                        placeholder={r.kind === 'GOOGLE_FORM' ? 'e.g. RESP-2026-9941' : 'https://docs.google.com/spreadsheets/d/...'}
+                        className="w-full text-xs font-mono px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-teal-500 focus:outline-hidden disabled:bg-slate-100"
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
             {/* SECTION: Google Sheet Integration (if applicable) */}
             {(requisition.mode === 'GOOGLE_SHEET' || requisition.mode === 'HYBRID') && requisition.googleSheetConfig && (
               <div className="bg-white p-5 rounded-xl border border-emerald-200 shadow-xs space-y-3">
@@ -645,7 +731,8 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
             )}
 
             {/* SECTION: Custom Dynamic Form Fields */}
-            {(requisition.mode === 'CUSTOM_FORM' || requisition.mode === 'HYBRID') && requisition.customFields && (
+            {((requisition.mode === 'CUSTOM_FORM' || requisition.mode === 'HYBRID') && requisition.customFields) ||
+              ((requisition.editLog?.length || 0) > 0 && (requisition.customFields?.length || 0) > 0) ? (
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
                   <FileText className="w-4 h-4 text-indigo-600" />
@@ -762,7 +849,7 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
                   })}
                 </div>
               </div>
-            )}
+            ) : null}
 
             {/* SECTION: FINGER DIGITAL SIGNATURE & OFFICIAL LETTER AUTHENTICATION */}
             <div className="bg-white p-5 rounded-xl border border-indigo-200 shadow-xs space-y-4">
