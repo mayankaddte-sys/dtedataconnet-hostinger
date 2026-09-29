@@ -13,6 +13,7 @@ import { formatDateTime } from '../../utils/dateUtils';
 import { exportRequisitionDataToCSV } from '../../utils/exportUtils';
 import { dispatchManualEmailReminder } from '../../lib/emailReminderEngine';
 import { getStoredSubmissionById } from '../../lib/storage';
+import { EditRequisitionModal, EditRequisitionSaveOptions } from './EditRequisitionModal';
 import { 
   ArrowLeft, 
   Download, 
@@ -43,7 +44,10 @@ import {
   FileCheck,
   Fingerprint,
   BookOpen,
-  Mail
+  Mail,
+  Pencil,
+  History,
+  Link2
 } from 'lucide-react';
 
 interface RequisitionDetailViewProps {
@@ -59,6 +63,9 @@ interface RequisitionDetailViewProps {
   onUpdateRequisitionDeadline?: (requisitionId: string, newDeadline: string) => void;
   onDeleteRequisition?: (requisitionId: string) => void;
   onDeleteSubmission?: (submissionId: string) => void;
+  // Present only for the owning desk / Directorate admin.
+  onEditRequisition?: (updated: Requisition, options: EditRequisitionSaveOptions) => Promise<void> | void;
+  editorName?: string;
 }
 
 export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
@@ -73,8 +80,12 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
   onGrantExtension,
   onUpdateRequisitionDeadline,
   onDeleteRequisition,
-  onDeleteSubmission
+  onDeleteSubmission,
+  onEditRequisition,
+  editorName
 }) => {
+  const [isEditOpen, setIsEditOpen] = useState<boolean>(false);
+  const [showEditHistory, setShowEditHistory] = useState<boolean>(false);
   const [selectedZone, setSelectedZone] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -214,6 +225,18 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {/* Edit / amend the demand (letters, fields, sheets & forms) */}
+          {onEditRequisition && (
+            <button
+              onClick={() => setIsEditOpen(true)}
+              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
+              title="मांग में पत्र, फ़ील्ड, Sheet/Form जोड़ें या संशोधित करें"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span>मांग संशोधित करें (Edit Demand)</span>
+            </button>
+          )}
+
           {/* Delete Requisition Order Button for Directorate */}
           {onDeleteRequisition && (
             <button
@@ -305,6 +328,108 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
                 <Eye className="w-3.5 h-3.5" />
                 <span>आदेश देखें (View)</span>
               </button>
+            </div>
+          )}
+
+          {/* Later-added letters, extra sheets/forms and amendment history */}
+          {((requisition.additionalLetters?.length || 0) > 0 ||
+            (requisition.additionalResources?.length || 0) > 0 ||
+            (requisition.editLog?.length || 0) > 0) && (
+            <div className="p-3 bg-white border border-slate-200 rounded-xl text-xs space-y-3">
+              {(requisition.additionalLetters?.length || 0) > 0 && (
+                <div className="space-y-1.5">
+                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>बाद में जोड़े गए पत्र</span>
+                  </div>
+                  {requisition.additionalLetters!.map(l => (
+                    <div key={l.id} className="flex items-center justify-between gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-800 truncate">{l.title}</div>
+                        <div className="text-[11px] text-slate-500 font-mono">
+                          {l.referenceNumber && <span>सं.: {l.referenceNumber} </span>}
+                          {l.letterDate && <span>| दिनांक: {l.letterDate}</span>}
+                        </div>
+                      </div>
+                      {l.fileUrl && (
+                        <a
+                          href={l.fileUrl}
+                          download={l.fileName || 'letter'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-bold shrink-0 flex items-center gap-1"
+                        >
+                          <Download className="w-3 h-3" />
+                          <span>खोलें</span>
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(requisition.additionalResources?.length || 0) > 0 && (
+                <div className="space-y-1.5">
+                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <Link2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>अतिरिक्त Sheet / Form</span>
+                  </div>
+                  {requisition.additionalResources!.map(r => {
+                    const answered = reqSubmissions.filter(sub => {
+                      const v = sub.data?.[`__res_${r.id}`];
+                      return v !== undefined && v !== '';
+                    }).length;
+                    return (
+                      <div key={r.id} className="flex items-center justify-between gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-800 truncate">{r.title}</div>
+                          <div className="text-[11px] text-slate-500">
+                            {r.responseRequired ? `${answered} इकाइयों ने उत्तर दिया` : 'केवल संदर्भ हेतु'}
+                          </div>
+                        </div>
+                        <a
+                          href={r.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-bold shrink-0 flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>खोलें</span>
+                        </a>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {(requisition.editLog?.length || 0) > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditHistory(v => !v)}
+                    className="font-bold text-slate-700 hover:text-slate-900 flex items-center gap-1.5"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>संशोधन इतिहास ({requisition.editLog!.length})</span>
+                  </button>
+                  {showEditHistory && (
+                    <div className="mt-2 space-y-2">
+                      {[...requisition.editLog!].reverse().map(entry => (
+                        <div key={entry.id} className="p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                          <div className="text-[11px] text-slate-500 font-mono">
+                            {formatDateTime(entry.at)} — {entry.byName}
+                          </div>
+                          <ul className="mt-1 space-y-0.5 text-slate-700">
+                            {entry.summary.map((line, i) => (
+                              <li key={i}>• {line}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -1200,6 +1325,16 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
       )}
 
       {/* PREVIEW ATTACHED GOVERNMENT ORDER MODAL */}
+      {isEditOpen && onEditRequisition && (
+        <EditRequisitionModal
+          requisition={requisition}
+          submissions={reqSubmissions}
+          editorName={editorName || desk?.name || 'Directorate'}
+          onClose={() => setIsEditOpen(false)}
+          onSave={onEditRequisition}
+        />
+      )}
+
       {previewingAttachedOrder && (
         <div className="fixed inset-0 z-60 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95">
