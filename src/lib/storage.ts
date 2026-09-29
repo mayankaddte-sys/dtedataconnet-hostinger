@@ -64,6 +64,9 @@ const toRequisition = (r: any): Requisition => ({
   targetDistricts: r.target_districts ?? undefined,
   targetUnitIds: r.target_unit_ids ?? [],
   forwardLog: r.forward_log ?? undefined,
+  additionalLetters: r.additional_letters ?? undefined,
+  additionalResources: r.additional_resources ?? undefined,
+  editLog: r.edit_log ?? undefined,
   customFields: r.custom_fields ?? undefined,
   googleSheetConfig: r.google_sheet_config ?? undefined,
   googleFormConfig: r.google_form_config ?? undefined,
@@ -81,7 +84,8 @@ const toRequisition = (r: any): Requisition => ({
   status: r.status
 });
 
-const fromRequisition = (req: Requisition) => ({
+const fromRequisition = (req: Requisition) => {
+  const row: Record<string, any> = {
   id: req.id,
   requisition_number: req.requisitionNumber,
   title: req.title,
@@ -115,7 +119,17 @@ const fromRequisition = (req: Requisition) => ({
   performa_file_url: req.performaFileUrl ?? null,
   performa_file_size: req.performaFileSize ?? null,
   status: req.status
-});
+  };
+
+  // Amendment columns are only sent once a desk has actually used the edit
+  // feature. Until migration 002 is run on the DB, demands that were never
+  // edited keep saving exactly as before (no unknown-column errors).
+  if (req.additionalLetters !== undefined) row.additional_letters = req.additionalLetters;
+  if (req.additionalResources !== undefined) row.additional_resources = req.additionalResources;
+  if (req.editLog !== undefined) row.edit_log = req.editLog;
+
+  return row;
+};
 
 const toSubmission = (r: any): SubmissionRecord => ({
   id: r.id,
