@@ -74,6 +74,10 @@ export const DirectorOverview: React.FC<DirectorOverviewProps> = ({
   } | null>(null);
 
   const [bannerMenuOpen, setBannerMenuOpen] = useState(false);
+  // Off by default — the disciplinary-action wording only goes into the
+  // notice when the Director explicitly opts into it here, not on every
+  // one-click "भेजें" press.
+  const [includeStrictWarning, setIncludeStrictWarning] = useState(false);
 
   // High-level KPI metrics
   const totalCells = desks.length;
@@ -409,31 +413,46 @@ export const DirectorOverview: React.FC<DirectorOverviewProps> = ({
               Defaulters / pending
             </div>
             {onSendDefaulterNotice && primaryBreachedDemand && (
-              <button
-                onClick={() => {
-                  const pendingUnits = fieldUnits.filter(u => {
-                    const isTarget = primaryBreachedDemand.targetScope === 'ALL_FIELD_UNITS' ||
-                      (primaryBreachedDemand.targetUnitIds && primaryBreachedDemand.targetUnitIds.includes(u.id));
-                    const isSubmitted = submissions.some(s => s.requisitionId === primaryBreachedDemand.id && s.fieldUnitId === u.id);
-                    return isTarget && !isSubmitted;
-                  });
-                  if (pendingUnits.length === 0) {
-                    alert('सभी इकाइयों द्वारा डेटा प्रस्तुत किया जा चुका है।');
-                    return;
-                  }
-                  onSendDefaulterNotice(
-                    pendingUnits.map(u => u.id),
-                    `[अति-महत्वपूर्ण अनुपालन] डेटा मांग आदेश: ${primaryBreachedDemand.requisitionNumber}`,
-                    `महोदय, पत्र संख्या ${primaryBreachedDemand.requisitionNumber} के क्रम में अविलंब डेटा अपलोड करें। समय-सीमा समाप्त होने पर अनुशासनात्मक कार्यवाही की जाएगी।`,
-                    primaryBreachedDemand.id
-                  );
-                }}
-                className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
-                title="सभी डिफ़ॉल्टरों को ईमेल (@vppup.in) व पोर्टल नोटिस भेजें"
-              >
-                <Send className="w-2.5 h-2.5" />
-                <span>ईमेल व नोटिस भेजें</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                <label className="flex items-center gap-1 text-[9px] font-semibold text-red-800 cursor-pointer select-none" title="चालू करने पर ही नोटिस में अनुशासनात्मक कार्यवाही की चेतावनी जोड़ी जाएगी">
+                  <input
+                    type="checkbox"
+                    checked={includeStrictWarning}
+                    onChange={(e) => setIncludeStrictWarning(e.target.checked)}
+                    className="w-3 h-3 accent-red-600"
+                  />
+                  सख्त चेतावनी
+                </label>
+                <button
+                  onClick={() => {
+                    const pendingUnits = fieldUnits.filter(u => {
+                      const isTarget = primaryBreachedDemand.targetScope === 'ALL_FIELD_UNITS' ||
+                        (primaryBreachedDemand.targetUnitIds && primaryBreachedDemand.targetUnitIds.includes(u.id));
+                      const isSubmitted = submissions.some(s => s.requisitionId === primaryBreachedDemand.id && s.fieldUnitId === u.id);
+                      return isTarget && !isSubmitted;
+                    });
+                    if (pendingUnits.length === 0) {
+                      alert('सभी इकाइयों द्वारा डेटा प्रस्तुत किया जा चुका है।');
+                      return;
+                    }
+                    const baseMessage = `महोदय, पत्र संख्या ${primaryBreachedDemand.requisitionNumber} के क्रम में अविलंब डेटा अपलोड करें।`;
+                    const message = includeStrictWarning
+                      ? `${baseMessage} समय-सीमा समाप्त होने पर अनुशासनात्मक कार्यवाही की जाएगी।`
+                      : baseMessage;
+                    onSendDefaulterNotice(
+                      pendingUnits.map(u => u.id),
+                      `[अति-महत्वपूर्ण अनुपालन] डेटा मांग आदेश: ${primaryBreachedDemand.requisitionNumber}`,
+                      message,
+                      primaryBreachedDemand.id
+                    );
+                  }}
+                  className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
+                  title="सभी डिफ़ॉल्टरों को ईमेल (@vppup.in) व पोर्टल नोटिस भेजें"
+                >
+                  <Send className="w-2.5 h-2.5" />
+                  <span>ईमेल व नोटिस भेजें</span>
+                </button>
+              </div>
             )}
           </div>
           <div className="text-3xl sm:text-4xl font-extrabold text-red-700 mt-2 tracking-tight">
@@ -719,4 +738,3 @@ export const DirectorOverview: React.FC<DirectorOverviewProps> = ({
     </div>
   );
 };
-
