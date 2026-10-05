@@ -103,6 +103,10 @@ export const Header: React.FC<HeaderProps> = ({
   const isITI = currentUser?.role === 'FIELD_ITI';
   const isDirectorate = isDirectorAdmin || isDirectorateDesk;
   const isField = isJD || isITI;
+    // Apprenticeship data return: filled by ITIs, reviewed by their JD, the
+  // Director, and the Apprenticeship Section desk.
+  const canSeeApprenticeship =
+    isITI || isJD || isDirectorAdmin || (isDirectorateDesk && currentUser?.deskId === 'desk-appr');
 
   // Filter units into JD offices and ITIs
   const jdOffices = fieldUnits.filter(u => u.type === 'JD_OFFICE');
