@@ -796,6 +796,34 @@ export const deleteRepositoryFile = async (
     );
   }
 };
+export const getApprenticeshipReturns = async (
+  filter: { fieldUnitId?: string; period?: string } = {}
+): Promise<ApprenticeshipReturn[]> => {
+  let q = supabase.from('apprenticeship_returns').select('*');
+  if (filter.fieldUnitId) q = q.eq('field_unit_id', filter.fieldUnitId);
+  if (filter.period) q = q.eq('period', filter.period);
+  const { data, error } = await q.order('period', { ascending: false });
+
+  if (error) {
+    console.error('Failed to fetch apprenticeship returns', error);
+    throw new Error(error.message || 'Failed to fetch apprenticeship returns');
+  }
+
+  return (data ?? []).map(toApprenticeshipReturn);
+};
+
+export const upsertApprenticeshipReturn = async (
+  ret: ApprenticeshipReturn
+): Promise<void> => {
+  const { error } = await supabase
+    .from('apprenticeship_returns')
+    .upsert(fromApprenticeshipReturn(ret), { onConflict: 'id' });
+
+  if (error) {
+    console.error('Failed to save apprenticeship return', error);
+    throw new Error(error.message || 'Failed to save apprenticeship return');
+  }
+};
 
 /* =========================================================================
    AUTH / CURRENT USER
