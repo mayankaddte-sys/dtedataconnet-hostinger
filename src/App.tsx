@@ -1010,6 +1010,19 @@ export default function App() {
                 onDeleteFile={handleDeleteRepositoryFile}
               />
             )}
+             {/* MENU TAB: APPRENTICESHIP DATA RETURN */}
+            {activeMenu === 'APPRENTICESHIP' && (
+              currentUser.role === 'FIELD_ITI' ||
+              currentUser.role === 'FIELD_JD' ||
+              currentUser.role === 'DIRECTORATE_ADMIN' ||
+              currentUser.deskId === 'desk-appr'
+            ) && (
+              <ApprenticeshipView
+                currentUser={currentUser}
+                fieldUnits={fieldUnits}
+                desks={desks}
+              />
+            )}
 
             {/* MENU TAB 7: DIRECTORATE APEX VIEW */}
             {activeMenu === 'DIRECTOR_VIEW' && (
