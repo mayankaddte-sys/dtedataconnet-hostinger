@@ -9,6 +9,7 @@ import {
   UserSession,
   FieldUnitBunch,
   RepositoryFile
+  ApprenticeshipReturn
 } from '../types/portal';
 
 /* =========================================================================
