@@ -8,7 +8,7 @@ import {
   DefaulterNotice,
   UserSession,
   FieldUnitBunch,
-  RepositoryFile
+  RepositoryFile,
   ApprenticeshipReturn
 } from '../types/portal';
 
