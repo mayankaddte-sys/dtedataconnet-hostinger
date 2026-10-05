@@ -289,7 +289,40 @@ const fromRepositoryFile = (f: RepositoryFile) => ({
   file_type: f.fileType ?? null,
   uploaded_by_name: f.uploadedByName ?? null
 });
+const toApprenticeshipReturn = (r: any): ApprenticeshipReturn => {
+  let apprentices = r.apprentices ?? [];
+  if (typeof apprentices === 'string') {
+    try { apprentices = JSON.parse(apprentices); } catch { apprentices = []; }
+  }
+  return {
+    id: r.id,
+    fieldUnitId: r.field_unit_id,
+    fieldUnitName: r.field_unit_name ?? '',
+    zone: r.zone ?? '',
+    district: r.district ?? '',
+    period: r.period,
+    sanctionedSeats: r.sanctioned_seats ?? null,
+    totalAppointed: r.total_appointed ?? null,
+    apprentices: Array.isArray(apprentices) ? apprentices : [],
+    submittedBy: r.submitted_by ?? undefined,
+    createdAt: r.created_at ?? undefined,
+    updatedAt: r.updated_at ?? undefined
+  };
+};
 
+// created_at / updated_at are maintained by MySQL, so they are not sent.
+const fromApprenticeshipReturn = (a: ApprenticeshipReturn) => ({
+  id: a.id,
+  field_unit_id: a.fieldUnitId,
+  field_unit_name: a.fieldUnitName,
+  zone: a.zone,
+  district: a.district,
+  period: a.period,
+  sanctioned_seats: a.sanctionedSeats ?? null,
+  total_appointed: a.totalAppointed ?? null,
+  apprentices: a.apprentices ?? [],
+  submitted_by: a.submittedBy ?? null
+});
 /* =========================================================================
    DESKS & FIELD UNITS (reference data — read-mostly)
    ========================================================================= */
