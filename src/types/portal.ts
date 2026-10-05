@@ -11,6 +11,7 @@ export type PortalNavMenu =
   | 'EXTENSIONS'
   | 'NOTICES'
   | 'DIRECTORY'
+  | 'APPRENTICESHIP'
   | 'REPOSITORY'
   | 'DIRECTOR_VIEW';
 
@@ -524,4 +525,30 @@ export interface UserSession {
   code: string;
   email: string;
   department: string;
+}
+export interface ApprenticeRow {
+  id: string;
+  name: string;
+  trade: string;
+  contractNumber: string;
+  contactNumber: string;
+  stipend: number | null;
+  stipendPaidUpto: string;
+  availableBudget: number | null;
+  requiredBudget: number | null;
+}
+
+export interface ApprenticeshipReturn {
+  id: string;
+  fieldUnitId: string;
+  fieldUnitName: string;
+  zone: string;
+  district: string;
+  period: string;
+  sanctionedSeats: number | null;
+  totalAppointed: number | null;
+  apprentices: ApprenticeRow[];
+  submittedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
