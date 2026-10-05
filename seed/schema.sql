@@ -238,5 +238,29 @@ CREATE TABLE IF NOT EXISTS desk_repository_files (
     CONSTRAINT fk_repo_desk FOREIGN KEY (desk_id) REFERENCES directorate_desks(id)
         ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- ------------------------------------------------------------
+-- 10. apprenticeship_returns
+-- Monthly apprenticeship data return filled by each ITI for the
+-- Apprenticeship Section. One row per ITI per month.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS apprenticeship_returns (
+    id                  VARCHAR(100)  NOT NULL PRIMARY KEY,
+    field_unit_id       VARCHAR(50)   NOT NULL,
+    field_unit_name     VARCHAR(500)  DEFAULT NULL,
+    zone                VARCHAR(100)  DEFAULT NULL,
+    district            VARCHAR(100)  DEFAULT NULL,
+    period              CHAR(7)       NOT NULL,
+    sanctioned_seats    INT           DEFAULT NULL,
+    total_appointed     INT           DEFAULT NULL,
+    apprentices         JSON          DEFAULT NULL,
+    submitted_by        VARCHAR(255)  DEFAULT NULL,
+    created_at          DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_appr_unit_period (field_unit_id, period),
+    KEY idx_appr_period (period),
+    KEY idx_appr_zone (zone),
+    CONSTRAINT fk_appr_field_unit FOREIGN KEY (field_unit_id) REFERENCES field_units(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
