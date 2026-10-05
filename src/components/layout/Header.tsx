@@ -203,6 +203,11 @@ export const Header: React.FC<HeaderProps> = ({
       label: 'दस्तावेज़ भंडार',
       icon: <FolderOpen className="w-4 h-4" />
     },
+        ...(canSeeApprenticeship ? [{
+      id: 'APPRENTICESHIP' as PortalNavMenu,
+      label: 'शिक्षुता डेटा',
+      icon: <GraduationCap className="w-4 h-4" />
+    }] : []),
     ...(isDirectorAdmin ? [{
       id: 'DIRECTOR_VIEW' as PortalNavMenu,
       label: 'राज्य समीक्षा (Apex View)',
