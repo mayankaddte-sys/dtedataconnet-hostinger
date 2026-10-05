@@ -23,5 +23,6 @@ export default {
   extension_requests: { pk: 'id', json: [] },
   defaulter_notices: { pk: 'id', json: [] },
   field_unit_bunches: { pk: 'id', json: ['unit_ids'] },
-  desk_repository_files: { pk: 'id', json: [] }
+   desk_repository_files: { pk: 'id', json: [] },
+  apprenticeship_returns: { pk: 'id', json: ['apprentices'] }
 };
