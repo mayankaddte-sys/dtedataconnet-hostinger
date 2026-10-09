@@ -8,6 +8,7 @@ import {
   DirectorateDesk,
   UserSession
 } from '../../types/portal';
+import { getEffectiveDeadline } from '../../utils/demandStats';
 import { isForwardableByJd, getUnforwardedMandalItis } from '../../utils/userScope';
 import { PriorityBadge } from '../common/PriorityBadge';
 import { CountdownTimer } from '../common/CountdownTimer';
@@ -385,7 +386,9 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
           ) : (
             filteredRequisitions.map((req) => {
               const sub = unitSubmissions.find(s => s.requisitionId === req.id);
-              const countdown = calculateCountdown(req.deadline);
+              // Per-unit deadline: includes any extension approved for this unit.
+              const effectiveDeadline = getEffectiveDeadline(req, fieldUnit.id, extensions);
+              const countdown = calculateCountdown(effectiveDeadline);
               const isOverdue = countdown.isOverdue;
               const isLocked = isOverdue && req.isStrictCutoff && !sub;
 
@@ -458,7 +461,7 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
                     <div className="flex items-center gap-4 text-xs text-slate-500 pt-1">
                       <span className="flex items-center gap-1 font-medium text-slate-700">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        Deadline: <strong>{formatDateTime(req.deadline)}</strong>
+                        Deadline: <strong>{formatDateTime(effectiveDeadline)}</strong>
                       </span>
                       <span>•</span>
                       <span>Mode: <strong className="text-slate-700">{req.mode === 'CUSTOM_FORM' ? 'Portal Form' : req.mode === 'GOOGLE_SHEET' ? 'Google Sheet' : req.mode === 'GOOGLE_FORM' ? 'Google Form' : 'Hybrid'}</strong></span>
@@ -476,7 +479,7 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
                   {/* Right Actions & Countdown */}
                   <div className="flex flex-col sm:flex-row lg:flex-col items-start sm:items-center lg:items-end gap-3 self-end lg:self-center shrink-0 border-t lg:border-t-0 pt-3 lg:pt-0 w-full lg:w-auto justify-between lg:justify-end">
                     
-                    <CountdownTimer deadline={req.deadline} isStrictCutoff={req.isStrictCutoff} />
+                    <CountdownTimer deadline={effectiveDeadline} isStrictCutoff={req.isStrictCutoff} />
 
                     <div className="flex items-center gap-2">
                       {/* JD-only: relay this demand to mandal ITIs for compliance */}
