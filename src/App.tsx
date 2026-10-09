@@ -516,11 +516,12 @@ export default function App() {
     let savedSub: SubmissionRecord;
 
     if (existingIndex >= 0) {
-            savedSub = {
+      savedSub = {
         ...submissions[existingIndex],
         ...subData,
-        // Always keep the ORIGINAL record id (a fresh id here created a second
-        // row for the same demand + unit, pushing compliance above 100%).
+        // Always keep the ORIGINAL record id. subData carries a freshly generated
+        // id when the modal was opened without the existing record, which used to
+        // create a second row for the same demand + unit (compliance > 100%).
         id: submissions[existingIndex].id,
         submittedAt: new Date().toISOString(),
         status: 'SUBMITTED'
