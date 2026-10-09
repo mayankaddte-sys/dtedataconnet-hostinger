@@ -142,7 +142,7 @@ export default function App() {
       setDesks(valueOr(d, 'desks', []));
       setFieldUnits(valueOr(fu, 'field units', []));
       setRequisitions(valueOr(req, 'requisitions', []));
-      setSubmissions(valueOr(sub, 'submissions', []));
+      setSubmissions(dedupeSubmissions(valueOr(sub, 'submissions', [])));
       setExtensions(valueOr(ext, 'extensions', []));
       setDefaulterNotices(valueOr(notices, 'defaulter notices', []));
       setBunches(valueOr(bnc, 'field unit bunches', []));
