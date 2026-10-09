@@ -54,6 +54,7 @@ import { ApprenticeshipView } from './components/views/ApprenticeshipView';
 import { ChangePasswordModal } from './components/auth/ChangePasswordModal';
 import { AutoEmailMonitorModal } from './components/modals/AutoEmailMonitorModal';
 import { ReminderDispatchSuccessModal } from './components/modals/ReminderDispatchSuccessModal';
+import { getEffectiveDeadline, dedupeSubmissions } from './utils/demandStats';
 import { runAutomaticEmailReminderCycle, dispatchManualEmailReminder, dispatchNewRequisitionEmails, dispatchRequisitionAmendmentEmails, EmailDispatchLog } from './lib/emailReminderEngine';
 
 export default function App() {
