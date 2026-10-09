@@ -6,6 +6,7 @@ import {
   FieldUnit, 
   UserSession 
 } from '../../types/portal';
+import { receivedFromTargets } from '../../utils/demandStats';
 import { CountdownTimer } from '../common/CountdownTimer';
 import { 
   Building2, 
@@ -110,7 +111,7 @@ export const DirectorOverview: React.FC<DirectorOverviewProps> = ({
       
       deskReqs.forEach(r => {
         expected += r.targetUnitIds.length;
-        received += submissions.filter(s => s.requisitionId === r.id).length;
+        received += receivedFromTargets(r, submissions);
       });
 
       // If desk has active demands, calculate real compliance rate; otherwise 100% (or 0 if not yet issued)
@@ -194,7 +195,7 @@ export const DirectorOverview: React.FC<DirectorOverviewProps> = ({
         const targetedInZone = r.targetUnitIds.filter(id => zoneUnitIds.has(id)).length;
         expected += targetedInZone;
         const zoneSubs = submissions.filter(s => s.requisitionId === r.id && zoneUnitIds.has(s.fieldUnitId));
-        received += zoneSubs.length;
+        received += receivedFromTargets(r, zoneSubs);
       });
 
       const rate = expected > 0 ? Math.round((received / expected) * 100) : 0;
@@ -236,7 +237,7 @@ export const DirectorOverview: React.FC<DirectorOverviewProps> = ({
         const targetedInDist = r.targetUnitIds.filter(id => distUnitIds.has(id)).length;
         expected += targetedInDist;
         const distSubs = submissions.filter(s => s.requisitionId === r.id && distUnitIds.has(s.fieldUnitId));
-        received += distSubs.length;
+        received += receivedFromTargets(r, distSubs);
       });
 
       const rate = expected > 0 ? Math.round((received / expected) * 100) : 0;
