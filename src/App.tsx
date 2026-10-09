@@ -625,6 +625,45 @@ export default function App() {
   };
 
   const handleGrantExtension = (requisitionId: string, unitId: string | 'ALL', newDeadline: string) => {
+    // One unit only: record an approved extension for that unit. The demand's own
+    // deadline (and so every other unit) is left untouched.
+    if (unitId !== 'ALL') {
+      const unit = fieldUnits.find(u => u.id === unitId);
+      const nowIso = new Date().toISOString();
+      const existing = extensions.find(e => e.requisitionId === requisitionId && e.fieldUnitId === unitId);
+      if (existing) {
+        setExtensions(extensions.map(e =>
+          e.id === existing.id
+            ? {
+                ...e,
+                status: 'APPROVED' as const,
+                requestedDeadline: newDeadline,
+                respondedAt: nowIso,
+                deskResponseComment: e.deskResponseComment || 'निदेशालय द्वारा समय-सीमा बढ़ाई गई।'
+              }
+            : e
+        ));
+      } else {
+        setExtensions([
+          {
+            id: `ext-${Date.now()}-${unitId}`,
+            requisitionId,
+            fieldUnitId: unitId,
+            fieldUnitName: unit?.name || unitId,
+            requestedDeadline: newDeadline,
+            reason: 'निदेशालय द्वारा सीधे समय-सीमा विस्तार',
+            status: 'APPROVED' as const,
+            createdAt: nowIso,
+            respondedAt: nowIso,
+            deskResponseComment: 'निदेशालय द्वारा समय-सीमा बढ़ाई गई।'
+          },
+          ...extensions
+        ]);
+      }
+      return;
+    }
+
+    // All target units: move the demand's own deadline.
     let extendedReq: Requisition | undefined;
     const updatedReqs = requisitions.map(r => {
       if (r.id === requisitionId) {
@@ -663,16 +702,23 @@ export default function App() {
   };
 
   const handleRespondExtension = (extensionId: string, status: 'APPROVED' | 'REJECTED', comments: string) => {
+    const now = Date.now();
     const updated = extensions.map(e => {
-      if (e.id === extensionId) {
-        return {
-          ...e,
-          status,
-          respondedAt: new Date().toISOString(),
-          deskResponseComment: comments
-        };
-      }
-      return e;
+      if (e.id !== extensionId) return e;
+      const base = {
+        ...e,
+        status,
+        respondedAt: new Date(now).toISOString(),
+        deskResponseComment: comments
+      };
+      if (status !== 'APPROVED') return base;
+      // Approval must actually reopen the demand for this unit: grant 48 hours
+      // from now (never earlier than the demand's own deadline). The granted
+      // date is stored in requestedDeadline; getEffectiveDeadline() reads it.
+      const req = requisitions.find(r => r.id === e.requisitionId);
+      const reqDeadline = req ? new Date(req.deadline).getTime() : 0;
+      const granted = Math.max(now + 48 * 3600 * 1000, reqDeadline);
+      return { ...base, requestedDeadline: new Date(granted).toISOString() };
     });
     setExtensions(updated);
   };
@@ -1135,7 +1181,10 @@ export default function App() {
             setSubmittingRequisition(null);
             setSubmittingExistingRecord(undefined);
           }}
-          requisition={submittingRequisition}
+          requisition={{
+            ...submittingRequisition,
+            deadline: getEffectiveDeadline(submittingRequisition, currentFieldUnit.id, extensions)
+          }}
           fieldUnit={currentFieldUnit}
           existingSubmission={submittingExistingRecord}
           onSubmit={handleFieldSubmit}
