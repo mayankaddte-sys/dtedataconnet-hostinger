@@ -125,8 +125,9 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
   const pendingUnits = targetUnits.filter(u => !submittedUnitIds.has(u.id));
   
   const isOverdue = new Date(requisition.deadline).getTime() < Date.now();
+  const receivedCount = targetUnits.length - pendingUnits.length; // distinct target units that replied
   const complianceRate = targetUnits.length > 0 
-    ? Math.round((reqSubmissions.length / targetUnits.length) * 100) 
+    ? Math.min(100, Math.round((receivedCount / targetUnits.length) * 100)) 
     : 0;
 
   const approvedCount = reqSubmissions.filter(s => s.status === 'APPROVED').length;
@@ -477,7 +478,7 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
                 Compliance Rate
               </h3>
               <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
-                {reqSubmissions.length} / {targetUnits.length} Units
+                {receivedCount} / {targetUnits.length} Units
               </span>
             </div>
 
