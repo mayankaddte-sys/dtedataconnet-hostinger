@@ -65,6 +65,8 @@ const toRequisition = (r: any): Requisition => ({
   targetDistricts: r.target_districts ?? undefined,
   targetUnitIds: r.target_unit_ids ?? [],
   forwardLog: r.forward_log ?? undefined,
+  allowJdForward:
+    r.allow_jd_forward === undefined || r.allow_jd_forward === null ? undefined : !!r.allow_jd_forward,
   additionalLetters: r.additional_letters ?? undefined,
   additionalResources: r.additional_resources ?? undefined,
   editLog: r.edit_log ?? undefined,
@@ -128,6 +130,7 @@ const fromRequisition = (req: Requisition) => {
   if (req.additionalLetters !== undefined) row.additional_letters = req.additionalLetters;
   if (req.additionalResources !== undefined) row.additional_resources = req.additionalResources;
   if (req.editLog !== undefined) row.edit_log = req.editLog;
+  if (req.allowJdForward !== undefined) row.allow_jd_forward = req.allowJdForward ? 1 : 0;
 
   return row;
 };
