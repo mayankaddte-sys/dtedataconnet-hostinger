@@ -1,3 +1,4 @@
+
 export type UserRole =
   | 'DIRECTORATE_ADMIN'
   | 'DIRECTORATE_DESK'
@@ -274,6 +275,9 @@ export interface Requisition {
 
   // Forwarding
   forwardLog?: RequisitionForwardEntry[];
+  // Directorate's authority for JD offices to relay this demand to their mandal
+  // ITIs. false = JDs cannot forward it. (undefined only before the DB migration.)
+  allowJdForward?: boolean;
 
   // Post-issue amendments (added by the desk via "Edit Demand")
   additionalLetters?: RequisitionLetter[];
@@ -526,6 +530,7 @@ export interface UserSession {
   email: string;
   department: string;
 }
+
 export interface ApprenticeRow {
   id: string;
   name: string;
