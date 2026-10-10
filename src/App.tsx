@@ -443,6 +443,11 @@ export default function App() {
     const req = requisitions.find(r => r.id === requisitionId);
     if (!req) return;
 
+    if (req.allowJdForward === false) {
+      window.alert('इस मांग को ITI को अग्रेषित करने की अनुमति निदेशालय द्वारा प्रदान नहीं की गई है।');
+      return;
+    }
+
     const newUnitIds = unitIds.filter(id => !req.targetUnitIds.includes(id));
     if (newUnitIds.length === 0) return;
 
