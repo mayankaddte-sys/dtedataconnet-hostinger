@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS requisitions (
     google_sheet_config                 JSON          DEFAULT NULL,
     google_form_config                  JSON          DEFAULT NULL,
     forward_log                         JSON          DEFAULT NULL,
+    allow_jd_forward                    TINYINT(1)    NOT NULL DEFAULT 0,
     additional_letters                  JSON          DEFAULT NULL,
     additional_resources                JSON          DEFAULT NULL,
     edit_log                            JSON          DEFAULT NULL,
