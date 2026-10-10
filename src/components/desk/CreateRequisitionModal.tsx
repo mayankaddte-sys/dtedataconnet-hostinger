@@ -97,6 +97,8 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
   const [deadlineDateTime, setDeadlineDateTime] = useState<string>(defaultDeadline);
   const [isStrictCutoff, setIsStrictCutoff] = useState<boolean>(true);
   const [allowLateSubmissionWithReason, setAllowLateSubmissionWithReason] = useState<boolean>(false);
+  // Authority for JD offices to relay this demand to their mandal ITIs (off by default).
+  const [allowJdForward, setAllowJdForward] = useState<boolean>(false);
 
   // Official Orders / Guidelines Upload State (Optional)
   const [orderDocumentName, setOrderDocumentName] = useState<string>('');
@@ -378,6 +380,9 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
       deadline: new Date(deadlineDateTime).toISOString(),
       isStrictCutoff,
       allowLateSubmissionWithReason,
+      allowJdForward: targetUnitIds.some(id => fieldUnits.find(u => u.id === id)?.type === 'JD_OFFICE')
+        ? allowJdForward
+        : false,
       targetScope,
       targetZones: targetZones || (targetScope === 'SELECTED_ZONES' ? selectedZones : undefined),
       targetDistricts,
@@ -1818,6 +1823,23 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                 </div>
               </label>
             </div>
+
+            <label className="flex items-start gap-2.5 p-3 rounded-lg border border-amber-200 bg-amber-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={allowJdForward}
+                onChange={(e) => setAllowJdForward(e.target.checked)}
+                className="mt-0.5 rounded text-amber-600"
+              />
+              <div>
+                <span className="text-xs font-bold text-slate-900 block">
+                  संयुक्त निदेशक (JD) को इस मांग को अपने मंडल की ITI को अग्रेषित करने का अधिकार दें
+                </span>
+                <span className="text-[11px] text-slate-600">
+                  चयनित न करने पर JD कार्यालय यह मांग ITI को आगे नहीं भेज सकेंगे। यह विकल्प केवल तब लागू होता है जब मांग JD कार्यालयों को भेजी जा रही हो।
+                </span>
+              </div>
+            </label>
           </div>
 
           {/* Footer Actions */}
