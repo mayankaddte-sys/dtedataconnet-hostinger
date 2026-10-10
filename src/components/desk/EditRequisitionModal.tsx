@@ -134,6 +134,7 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
   const [allowLate, setAllowLate] = useState(requisition.allowLateSubmissionWithReason);
   const [requireDeclaration, setRequireDeclaration] = useState(requisition.requireOfficerDeclaration);
   const [requireSeal, setRequireSeal] = useState(requisition.requireOfficialSealUpload);
+  const [allowJdForward, setAllowJdForward] = useState<boolean>(requisition.allowJdForward !== false);
 
   /* ---------------- Original order + added letters ---------------- */
   const [orderRef, setOrderRef] = useState(requisition.orderReferenceNumber || '');
@@ -227,6 +228,8 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
       requireSeal !== requisition.requireOfficialSealUpload
     )
       out.push('घोषणा/मुहर संबंधी आवश्यकता बदली गई');
+    if (allowJdForward !== (requisition.allowJdForward !== false))
+      out.push('JD द्वारा ITI को अग्रेषण की अनुमति बदली गई');
 
     if (
       orderRef.trim() !== (requisition.orderReferenceNumber || '') ||
@@ -289,7 +292,7 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
     return out;
   }, [
     title, description, priority, priorityLabel, deadlineIso, isStrictCutoff, allowLate,
-    requireDeclaration, requireSeal, orderRef, orderDate, orderUrl, letters, fields,
+    requireDeclaration, requireSeal, allowJdForward, orderRef, orderDate, orderUrl, letters, fields,
     sheetUrl, sheetInstr, formUrl, formInstr, resources, requisition
   ]);
 
@@ -496,6 +499,7 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
       allowLateSubmissionWithReason: allowLate,
       requireOfficerDeclaration: requireDeclaration,
       requireOfficialSealUpload: requireSeal,
+      allowJdForward,
 
       orderReferenceNumber: orderRef.trim() || undefined,
       orderDate: orderDate || undefined,
@@ -656,6 +660,10 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
                 <label className="flex items-start gap-2 cursor-pointer">
                   <input type="checkbox" className="mt-0.5" checked={requireSeal} onChange={e => setRequireSeal(e.target.checked)} />
                   <span className="font-medium text-slate-800">आधिकारिक मुहर/हस्ताक्षर आवश्यक</span>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" className="mt-0.5" checked={allowJdForward} onChange={e => setAllowJdForward(e.target.checked)} />
+                  <span className="font-medium text-slate-800">JD को इस मांग को अपने मंडल की ITI को अग्रेषित करने का अधिकार</span>
                 </label>
               </div>
             </div>
