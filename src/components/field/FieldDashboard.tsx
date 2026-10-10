@@ -9,7 +9,7 @@ import {
   UserSession
 } from '../../types/portal';
 import { getEffectiveDeadline } from '../../utils/demandStats';
-import { isForwardableByJd, getUnforwardedMandalItis } from '../../utils/userScope';
+import { isForwardableByJd, isForwardBlockedByDirectorate, getUnforwardedMandalItis } from '../../utils/userScope';
 import { PriorityBadge } from '../common/PriorityBadge';
 import { CountdownTimer } from '../common/CountdownTimer';
 import { StatusBadge } from '../common/StatusBadge';
@@ -491,6 +491,11 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
                           <Share2 className="w-3.5 h-3.5" />
                           <span>मंडल की ITI को अग्रेषित करें</span>
                         </button>
+                      )}
+                      {isJD && isForwardBlockedByDirectorate(req, fieldUnit, allFieldUnits) && (
+                        <span className="text-[11px] font-medium text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full">
+                          ITI को अग्रेषण हेतु निदेशालय की अनुमति नहीं
+                        </span>
                       )}
                       {isJD && req.forwardLog && req.forwardLog.filter(f => f.forwardedByJdId === fieldUnit.id).length > 0 && (
                         <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
