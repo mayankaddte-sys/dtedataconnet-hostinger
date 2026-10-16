@@ -1330,6 +1330,7 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
         <EditRequisitionModal
           requisition={requisition}
           submissions={reqSubmissions}
+          fieldUnits={fieldUnits}
           editorName={editorName || desk?.name || 'Directorate'}
           onClose={() => setIsEditOpen(false)}
           onSave={onEditRequisition}
