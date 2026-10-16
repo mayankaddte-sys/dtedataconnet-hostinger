@@ -69,7 +69,7 @@ interface EditRequisitionModalProps {
   /** submissions of THIS requisition only */
   submissions: SubmissionRecord[];
   /** all field units (JD offices + ITIs) - used by the Units tab */
-  fieldUnits: FieldUnit[];
+  fieldUnits?: FieldUnit[];
   editorName: string;
   onClose: () => void;
   onSave: (updated: Requisition, options: EditRequisitionSaveOptions) => Promise<void> | void;
@@ -128,8 +128,8 @@ const labelCls = 'block text-[11px] font-bold text-slate-700 mb-1';
 
 export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
   requisition,
-  submissions,
-  fieldUnits,
+  submissions = [],
+  fieldUnits = [],
   editorName,
   onClose,
   onSave
