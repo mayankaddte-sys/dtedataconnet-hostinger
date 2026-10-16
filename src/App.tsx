@@ -301,7 +301,14 @@ export default function App() {
   // BEFORE touching local state, and treat email as best-effort.
   const handleEditRequisition = async (
     updated: Requisition,
-    opts: { notifyUnits: boolean; requestResubmission: boolean; changes: string[] }
+    opts: {
+      notifyUnits: boolean;
+      requestResubmission: boolean;
+      notifyAddedUnits?: boolean;
+      addedUnitIds?: string[];
+      removedUnitIds?: string[];
+      changes: string[];
+    }
   ) => {
     // Only the owning desk (or the Directorate admin) may amend a demand.
     const canEdit =
@@ -328,8 +335,12 @@ export default function App() {
     if (opts.requestResubmission) {
       const nowIso = new Date().toISOString();
       const note = 'मांग में संशोधन (नया फ़ील्ड/सामग्री जोड़ी गई) — कृपया संशोधित विवरण पुनः प्रस्तुत करें।';
+      // units removed from the demand in this same edit are not asked to resubmit
       const toRevise = submissions.filter(
-        s => s.requisitionId === updated.id && s.status !== 'REVISION_REQUESTED'
+        s =>
+          s.requisitionId === updated.id &&
+          s.status !== 'REVISION_REQUESTED' &&
+          updated.targetUnitIds.includes(s.fieldUnitId)
       );
       const revised: SubmissionRecord[] = toRevise.map(s => ({
         ...s,
@@ -359,9 +370,25 @@ export default function App() {
       }
     }
 
+    const addedIds = new Set(opts.addedUnitIds || []);
+
+    // Units newly added to the demand never saw it: tell them it is theirs now.
+    if (opts.notifyAddedUnits && addedIds.size > 0) {
+      const senderDesk = desks.find(d => d.id === updated.deskId);
+      const addedUnits = fieldUnits.filter(u => addedIds.has(u.id));
+      dispatchRequisitionAmendmentEmails(
+        updated,
+        addedUnits,
+        ['आपकी इकाई को इस मांग में जोड़ा गया है — कृपया पोर्टल पर लॉगिन कर मांग देखें और निर्धारित अंतिम तिथि तक आख्या प्रस्तुत करें।'],
+        senderDesk,
+        false
+      ).catch(e => console.error('Failed to dispatch emails to newly added units', e));
+    }
+
     if (opts.notifyUnits) {
       const senderDesk = desks.find(d => d.id === updated.deskId);
-      const targetUnits = fieldUnits.filter(u => updated.targetUnitIds.includes(u.id));
+      // newly added units already got their own mail above
+      const targetUnits = fieldUnits.filter(u => updated.targetUnitIds.includes(u.id) && !addedIds.has(u.id));
       dispatchRequisitionAmendmentEmails(
         updated,
         targetUnits,
