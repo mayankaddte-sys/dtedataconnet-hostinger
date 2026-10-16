@@ -8,7 +8,8 @@ import {
   RequisitionLetter,
   RequisitionResource,
   RequisitionEditLogEntry,
-  PriorityLevel
+  PriorityLevel,
+  FieldUnit
 } from '../../types/portal';
 import {
   X,
@@ -26,7 +27,9 @@ import {
   ListChecks,
   BookOpen,
   Bell,
-  RotateCcw
+  RotateCcw,
+  Users,
+  Search
 } from 'lucide-react';
 
 /* ============================================================
@@ -39,6 +42,7 @@ import {
      2. Letters      - replace the original order, add later letters
      3. Fields       - add / edit / delete / reorder form fields
      4. Sheets/Forms - edit the main sheet/form link, add new ones
+     (Basic tab also holds the target field units - add / remove JD / ITI)
 
    Nothing is ever deleted from existing submissions: removing a
    field only stops it being asked/shown; the data already sent by
@@ -50,6 +54,12 @@ export interface EditRequisitionSaveOptions {
   notifyUnits: boolean;
   /** move already-submitted units back to REVISION_REQUESTED */
   requestResubmission: boolean;
+  /** e-mail the units newly added to the demand (they never saw it before) */
+  notifyAddedUnits: boolean;
+  /** ids of units newly added to the demand */
+  addedUnitIds: string[];
+  /** ids of units removed from the demand (their old submissions are kept) */
+  removedUnitIds: string[];
   /** human readable list of what changed (also stored in editLog) */
   changes: string[];
 }
@@ -58,6 +68,8 @@ interface EditRequisitionModalProps {
   requisition: Requisition;
   /** submissions of THIS requisition only */
   submissions: SubmissionRecord[];
+  /** all field units (JD offices + ITIs) - used by the Units tab */
+  fieldUnits: FieldUnit[];
   editorName: string;
   onClose: () => void;
   onSave: (updated: Requisition, options: EditRequisitionSaveOptions) => Promise<void> | void;
@@ -117,6 +129,7 @@ const labelCls = 'block text-[11px] font-bold text-slate-700 mb-1';
 export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
   requisition,
   submissions,
+  fieldUnits,
   editorName,
   onClose,
   onSave
@@ -195,6 +208,48 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
     instructions: string;
     responseRequired: boolean;
   }>({ kind: 'GOOGLE_SHEET', title: '', url: '', instructions: '', responseRequired: true });
+
+  /* ---------------- Target units ---------------- */
+  const [targetIds, setTargetIds] = useState<string[]>(requisition.targetUnitIds || []);
+  const [unitSearch, setUnitSearch] = useState('');
+  const [pickType, setPickType] = useState<'ALL' | 'JD_OFFICE' | 'ITI'>('ALL');
+  const [pickZone, setPickZone] = useState('ALL');
+  const [pickDistrict, setPickDistrict] = useState('ALL');
+  const [pickSearch, setPickSearch] = useState('');
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+
+  const originalTargetIds = useMemo(
+    () => new Set(requisition.targetUnitIds || []),
+    [requisition.targetUnitIds]
+  );
+  const targetIdSet = useMemo(() => new Set(targetIds), [targetIds]);
+  const unitById = useMemo(() => new Map(fieldUnits.map(u => [u.id, u])), [fieldUnits]);
+  // units that have already sent something for this demand
+  const submittedUnitIds = useMemo(
+    () => new Set(submissions.map(s => s.fieldUnitId)),
+    [submissions]
+  );
+  const addedUnitIds = useMemo(() => targetIds.filter(id => !originalTargetIds.has(id)), [targetIds, originalTargetIds]);
+  const removedUnitIds = useMemo(
+    () => (requisition.targetUnitIds || []).filter(id => !targetIdSet.has(id)),
+    [requisition.targetUnitIds, targetIdSet]
+  );
+  const zoneOptions = useMemo(
+    () => Array.from(new Set(fieldUnits.map(u => u.zone).filter(Boolean))).sort(),
+    [fieldUnits]
+  );
+  const districtOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          fieldUnits
+            .filter(u => pickZone === 'ALL' || u.zone === pickZone)
+            .map(u => u.district)
+            .filter(Boolean)
+        )
+      ).sort(),
+    [fieldUnits, pickZone]
+  );
 
   /* ---------------- Save options ---------------- */
   const [notifyUnits, setNotifyUnits] = useState(true);
@@ -277,6 +332,9 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
         out.push('मुख्य Google Form का लिंक/निर्देश बदला गया');
     }
 
+    if (addedUnitIds.length > 0) out.push(`${addedUnitIds.length} नई इकाइयाँ मांग में जोड़ी गईं`);
+    if (removedUnitIds.length > 0) out.push(`${removedUnitIds.length} इकाइयाँ मांग से हटाई गईं`);
+
     const oldRes = requisition.additionalResources || [];
     resources
       .filter(r => !oldRes.some(o => o.id === r.id))
@@ -293,7 +351,8 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
   }, [
     title, description, priority, priorityLabel, deadlineIso, isStrictCutoff, allowLate,
     requireDeclaration, requireSeal, allowJdForward, orderRef, orderDate, orderUrl, letters, fields,
-    sheetUrl, sheetInstr, formUrl, formInstr, resources, requisition
+    sheetUrl, sheetInstr, formUrl, formInstr, resources, requisition,
+    addedUnitIds, removedUnitIds
   ]);
 
   const contentChanged = changes.some(
@@ -359,6 +418,81 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
           : f
       )
     );
+
+  /* ============================================================
+     Unit helpers
+     ============================================================ */
+  const removeUnit = (id: string) => {
+    const u = unitById.get(id);
+    const name = u?.name || id;
+    if (submittedUnitIds.has(id)) {
+      const ok = window.confirm(
+        `"${name}" ने इस मांग पर डेटा भेजा हुआ है।\n\nहटाने पर यह इकाई मांग देख/भर नहीं सकेगी और संख्या में नहीं गिनी जाएगी, पर इसका पहले से भेजा गया डेटा डेटाबेस में सुरक्षित रहेगा।\n\nक्या आप इकाई हटाना चाहते हैं?`
+      );
+      if (!ok) return;
+    } else if (u?.type === 'JD_OFFICE' && (requisition.forwardLog || []).some(f => f.forwardedByJdId === id)) {
+      const ok = window.confirm(
+        `"${name}" ने यह मांग अपने मंडल की ITI को अग्रेषित की हुई है। JD को हटाने पर वे ITI लक्षित सूची में बनी रहेंगी (उन्हें अलग से हटाएँ)।\n\nJD कार्यालय हटाएँ?`
+      );
+      if (!ok) return;
+    }
+    setTargetIds(prev => prev.filter(x => x !== id));
+  };
+
+  const matchesQuery = (u: FieldUnit, q: string) => {
+    const t = q.trim().toLowerCase();
+    if (!t) return true;
+    return (
+      u.name.toLowerCase().includes(t) ||
+      (u.code || '').toLowerCase().includes(t) ||
+      (u.district || '').toLowerCase().includes(t) ||
+      (u.zone || '').toLowerCase().includes(t)
+    );
+  };
+
+  const currentUnits = useMemo(
+    () =>
+      targetIds
+        .map(id => unitById.get(id))
+        .filter((u): u is FieldUnit => !!u)
+        .filter(u => matchesQuery(u, unitSearch)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [targetIds, unitById, unitSearch]
+  );
+  // ids in the demand that no longer exist in the unit directory
+  const unknownTargetIds = useMemo(() => targetIds.filter(id => !unitById.has(id)), [targetIds, unitById]);
+
+  const pickable = useMemo(
+    () =>
+      fieldUnits.filter(
+        u =>
+          !targetIdSet.has(u.id) &&
+          (pickType === 'ALL' || u.type === pickType) &&
+          (pickZone === 'ALL' || u.zone === pickZone) &&
+          (pickDistrict === 'ALL' || u.district === pickDistrict) &&
+          matchesQuery(u, pickSearch)
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fieldUnits, targetIdSet, pickType, pickZone, pickDistrict, pickSearch]
+  );
+  const PICK_RENDER_LIMIT = 150;
+
+  const togglePicked = (id: string) =>
+    setPicked(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  const addPickedUnits = (ids: string[]) => {
+    if (ids.length === 0) return;
+    setTargetIds(prev => {
+      const have = new Set(prev);
+      return [...prev, ...ids.filter(id => !have.has(id))];
+    });
+    setPicked(new Set());
+  };
 
   /* ============================================================
      File handlers
@@ -453,6 +587,7 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
   const validate = (): string | null => {
     if (!title.trim()) return 'मांग का शीर्षक खाली नहीं हो सकता।';
     if (!deadlineLocal) return 'कृपया अंतिम तिथि चुनें।';
+    if (targetIds.length === 0) return 'कम से कम एक लक्षित इकाई (JD/ITI) रहनी चाहिए (इकाइयाँ टैब देखें)।';
     for (const f of fields) {
       if (!f.label.trim()) return 'सभी फ़ील्ड का नाम/लेबल भरा होना चाहिए (फ़ील्ड टैब देखें)।';
       if ((f.type === 'select' || f.type === 'radio') && (f.options || []).length < 1)
@@ -501,6 +636,23 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
       requireOfficialSealUpload: requireSeal,
       allowJdForward,
 
+      // Target units. If the list was changed by hand it no longer matches the
+      // original scope (all ITIs / a zone / a saved bunch ...), so it becomes
+      // a plain specific-units demand and zones/districts are re-derived.
+      ...(addedUnitIds.length > 0 || removedUnitIds.length > 0
+        ? (() => {
+            const us = targetIds.map(id => unitById.get(id)).filter((u): u is FieldUnit => !!u);
+            return {
+              targetUnitIds: targetIds,
+              targetScope: 'SPECIFIC_UNITS' as const,
+              targetZones: Array.from(new Set(us.map(u => u.zone).filter(Boolean))),
+              targetDistricts: Array.from(new Set(us.map(u => u.district).filter(Boolean))),
+              targetBunchId: undefined,
+              targetBunchName: undefined
+            };
+          })()
+        : {}),
+
       orderReferenceNumber: orderRef.trim() || undefined,
       orderDate: orderDate || undefined,
       orderDocumentName: orderName || undefined,
@@ -534,6 +686,9 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
       await onSave(updated, {
         notifyUnits: notifyUnits && contentChanged,
         requestResubmission: requestResubmission && fieldOrResourceChanged && submittedCount > 0,
+        notifyAddedUnits: notifyUnits && addedUnitIds.length > 0,
+        addedUnitIds,
+        removedUnitIds,
         changes
       });
       onClose();
@@ -1079,6 +1234,185 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
             </div>
           )}
 
+          {/* ---------------- UNITS ---------------- */}
+          {tab === 'BASIC' && (
+            <div className="space-y-4">
+              <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+                <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                  <Users className="w-4 h-4 text-indigo-600" />
+                  <span>लक्षित इकाइयाँ ({targetIds.length})</span>
+                </h3>
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold">
+                    JD: {targetIds.filter(id => unitById.get(id)?.type === 'JD_OFFICE').length}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold">
+                    ITI: {targetIds.filter(id => unitById.get(id)?.type === 'ITI').length}
+                  </span>
+                  {addedUnitIds.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+                      + {addedUnitIds.length} नई
+                    </span>
+                  )}
+                  {removedUnitIds.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold">
+                      − {removedUnitIds.length} हटाई गईं
+                    </span>
+                  )}
+                </div>
+                {submittedCount > 0 && (
+                  <p className="text-[11px] text-slate-500">
+                    किसी इकाई को हटाने पर उसका पहले भेजा गया डेटा नहीं मिटेगा, केवल वह इस मांग की गिनती/सूची से बाहर हो जाएगी।
+                  </p>
+                )}
+                {unknownTargetIds.length > 0 && (
+                  <p className="text-[11px] text-amber-700">
+                    {unknownTargetIds.length} लक्षित इकाई ID इकाई-सूची में नहीं मिलीं (नीचे सूची में नहीं दिख रहीं)।
+                  </p>
+                )}
+              </div>
+
+              {/* Current units */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Search className="w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    className={inputCls}
+                    placeholder="इन इकाइयों में खोजें (नाम / कोड / जनपद / मंडल)"
+                    value={unitSearch}
+                    onChange={e => setUnitSearch(e.target.value)}
+                  />
+                </div>
+                <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                  {currentUnits.length === 0 && (
+                    <p className="p-3 text-slate-500 italic">कोई इकाई नहीं मिली।</p>
+                  )}
+                  {currentUnits.map(u => (
+                    <div key={u.id} className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 truncate">{u.name}</div>
+                        <div className="text-[11px] text-slate-500 flex flex-wrap gap-x-2">
+                          <span>{u.type === 'JD_OFFICE' ? 'JD कार्यालय' : 'ITI'}</span>
+                          <span className="font-mono">{u.code}</span>
+                          <span>{u.district}</span>
+                          <span>{u.zone}</span>
+                          {!originalTargetIds.has(u.id) && <span className="text-emerald-700 font-bold">नई</span>}
+                          {submittedUnitIds.has(u.id) && <span className="text-indigo-700 font-bold">उत्तर प्राप्त</span>}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeUnit(u.id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 shrink-0"
+                        title="इस इकाई को मांग से हटाएँ"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Add units */}
+              <div className="p-4 border border-dashed border-indigo-300 rounded-xl bg-indigo-50/40 space-y-3">
+                <div className="font-bold text-indigo-900">+ और इकाइयाँ जोड़ें</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <select className={inputCls} value={pickType} onChange={e => setPickType(e.target.value as 'ALL' | 'JD_OFFICE' | 'ITI')}>
+                    <option value="ALL">सभी प्रकार</option>
+                    <option value="JD_OFFICE">JD कार्यालय</option>
+                    <option value="ITI">ITI</option>
+                  </select>
+                  <select
+                    className={inputCls}
+                    value={pickZone}
+                    onChange={e => {
+                      setPickZone(e.target.value);
+                      setPickDistrict('ALL');
+                    }}
+                  >
+                    <option value="ALL">सभी मंडल / ज़ोन</option>
+                    {zoneOptions.map(z => (
+                      <option key={z} value={z}>{z}</option>
+                    ))}
+                  </select>
+                  <select className={inputCls} value={pickDistrict} onChange={e => setPickDistrict(e.target.value)}>
+                    <option value="ALL">सभी जनपद</option>
+                    {districtOptions.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  className={inputCls}
+                  placeholder="नाम / कोड से खोजें"
+                  value={pickSearch}
+                  onChange={e => setPickSearch(e.target.value)}
+                />
+
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="text-slate-600">
+                    {pickable.length} इकाइयाँ उपलब्ध (अभी लक्षित नहीं)
+                  </span>
+                  <button
+                    type="button"
+                    disabled={pickable.length === 0}
+                    onClick={() => setPicked(new Set(pickable.map(u => u.id)))}
+                    className="px-2 py-1 bg-white border border-slate-300 rounded font-bold hover:bg-slate-100 disabled:opacity-40"
+                  >
+                    सभी चुनें
+                  </button>
+                  <button
+                    type="button"
+                    disabled={picked.size === 0}
+                    onClick={() => setPicked(new Set())}
+                    className="px-2 py-1 bg-white border border-slate-300 rounded font-bold hover:bg-slate-100 disabled:opacity-40"
+                  >
+                    चयन हटाएँ
+                  </button>
+                </div>
+
+                <div className="max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
+                  {pickable.length === 0 && (
+                    <p className="p-3 text-slate-500 italic">जोड़ने के लिए कोई इकाई नहीं मिली।</p>
+                  )}
+                  {pickable.slice(0, PICK_RENDER_LIMIT).map(u => (
+                    <label key={u.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-50">
+                      <input type="checkbox" checked={picked.has(u.id)} onChange={() => togglePicked(u.id)} />
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 truncate">{u.name}</div>
+                        <div className="text-[11px] text-slate-500 flex flex-wrap gap-x-2">
+                          <span>{u.type === 'JD_OFFICE' ? 'JD कार्यालय' : 'ITI'}</span>
+                          <span className="font-mono">{u.code}</span>
+                          <span>{u.district}</span>
+                          <span>{u.zone}</span>
+                          {originalTargetIds.has(u.id) && <span className="text-rose-700 font-bold">पहले हटाई गई</span>}
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                  {pickable.length > PICK_RENDER_LIMIT && (
+                    <p className="p-2 text-[11px] text-slate-500 text-center">
+                      पहली {PICK_RENDER_LIMIT} इकाइयाँ दिखाई गईं — फ़िल्टर/खोज से सूची छोटी करें, या "सभी चुनें" दबाएँ।
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={picked.size === 0}
+                  onClick={() => addPickedUnits(Array.from(picked))}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>चयनित {picked.size} इकाइयाँ जोड़ें</span>
+                </button>
+                <p className="text-[10px] text-slate-500">
+                  जोड़ी गई इकाइयों को मांग तभी दिखेगी जब आप नीचे "बदलाव सुरक्षित करें" दबाएँगे।
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* ---------------- RESOURCES ---------------- */}
           {tab === 'RESOURCES' && (
             <div className="space-y-4">
@@ -1249,11 +1583,15 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="space-y-1">
-              {contentChanged && (
+              {(contentChanged || addedUnitIds.length > 0) && (
                 <label className="flex items-center gap-2 text-[11px] cursor-pointer">
                   <input type="checkbox" checked={notifyUnits} onChange={e => setNotifyUnits(e.target.checked)} />
                   <Bell className="w-3 h-3 text-indigo-600" />
-                  <span className="font-medium text-slate-800">लक्षित इकाइयों को ईमेल से संशोधन की सूचना भेजें</span>
+                  <span className="font-medium text-slate-800">
+                    {contentChanged
+                      ? 'लक्षित इकाइयों को ईमेल से संशोधन की सूचना भेजें'
+                      : 'नई जोड़ी गई इकाइयों को ईमेल से सूचित करें'}
+                  </span>
                 </label>
               )}
               {fieldOrResourceChanged && submittedCount > 0 && (
