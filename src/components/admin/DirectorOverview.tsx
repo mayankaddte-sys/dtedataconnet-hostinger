@@ -7,6 +7,7 @@ import {
   UserSession 
 } from '../../types/portal';
 import { receivedFromTargets } from '../../utils/demandStats';
+import { downloadCompiledPendencyCSV } from '../../utils/compiledPendency';
 import { CountdownTimer } from '../common/CountdownTimer';
 import { 
   Building2, 
@@ -28,7 +29,8 @@ import {
   SlidersHorizontal,
   X,
   FileSpreadsheet,
-  AlertCircle
+  AlertCircle,
+  Download
 } from 'lucide-react';
 
 interface DirectorOverviewProps {
@@ -360,6 +362,21 @@ export const DirectorOverview: React.FC<DirectorOverviewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Compiled ITI-wise pendency list (all active demands together) */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => {
+            const n = downloadCompiledPendencyCSV(requisitions, submissions, fieldUnits, 'सभी प्रकोष्ठ');
+            if (n === 0) alert('कोई ITI लंबित नहीं है।');
+          }}
+          className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs"
+          title="सभी सक्रिय मांगों की ITI-वार संकलित लंबित सूची (Excel/CSV)"
+        >
+          <Download className="w-3.5 h-3.5 text-indigo-600" />
+          <span>ITI-वार संकलित लंबित सूची डाउनलोड करें</span>
+        </button>
+      </div>
 
       {/* KPI CARDS WITH SEVERITY COLOR-CODING (4 Across) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
