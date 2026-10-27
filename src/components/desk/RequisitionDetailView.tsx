@@ -14,6 +14,7 @@ import { exportRequisitionDataToCSV } from '../../utils/exportUtils';
 import { dispatchManualEmailReminder } from '../../lib/emailReminderEngine';
 import { getStoredSubmissionById } from '../../lib/storage';
 import { EditRequisitionModal, EditRequisitionSaveOptions } from './EditRequisitionModal';
+import { PendencyListModal } from './PendencyListModal';
 import { 
   ArrowLeft, 
   Download, 
@@ -47,7 +48,8 @@ import {
   Mail,
   Pencil,
   History,
-  Link2
+  Link2,
+  ClipboardList
 } from 'lucide-react';
 
 interface RequisitionDetailViewProps {
@@ -101,6 +103,9 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
   const [previewingSignedDoc, setPreviewingSignedDoc] = useState<SubmissionRecord | null>(null);
   const [previewingAttachedOrder, setPreviewingAttachedOrder] = useState<boolean>(false);
   
+  // ITI-wise pendency list
+  const [isPendencyOpen, setIsPendencyOpen] = useState<boolean>(false);
+
   // Defaulter Notice Modal
   const [isDefaulterModalOpen, setIsDefaulterModalOpen] = useState<boolean>(false);
   const [noticeSubject, setNoticeSubject] = useState<string>(`Urgent Reminder: Requisition No. ${requisition.requisitionNumber} data pending`);
@@ -249,6 +254,16 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
               <span>मांग आदेश विलोपित करें (Delete Order)</span>
             </button>
           )}
+
+          {/* ITI-wise pendency list */}
+          <button
+            onClick={() => setIsPendencyOpen(true)}
+            className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+            title="ITI-वार लंबित सूची देखें / डाउनलोड करें"
+          >
+            <ClipboardList className="w-3.5 h-3.5" />
+            <span>ITI-वार लंबित सूची</span>
+          </button>
 
           {/* Dispatch Reminders */}
           <button
@@ -920,6 +935,15 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
       )}
 
       {/* MODAL 2: Defaulter Notice Dispatch Modal */}
+      {isPendencyOpen && (
+        <PendencyListModal
+          requisition={requisition}
+          targetUnits={targetUnits}
+          submissions={reqSubmissions}
+          onClose={() => setIsPendencyOpen(false)}
+        />
+      )}
+
       {isDefaulterModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
