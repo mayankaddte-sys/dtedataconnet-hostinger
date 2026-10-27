@@ -8,6 +8,7 @@ import {
   PriorityLevel 
 } from '../../types/portal';
 import { receivedFromTargets } from '../../utils/demandStats';
+import { downloadCompiledPendencyCSV } from '../../utils/compiledPendency';
 import { PriorityBadge } from '../common/PriorityBadge';
 import { CountdownTimer } from '../common/CountdownTimer';
 import { formatDateTime } from '../../utils/dateUtils';
@@ -28,7 +29,8 @@ import {
   Inbox,
   Check,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Download
 } from 'lucide-react';
 
 interface DeskDashboardProps {
@@ -125,6 +127,7 @@ export const DeskDashboard: React.FC<DeskDashboardProps> = ({
             </div>
           </div>
 
+          <div className="flex flex-col gap-2 self-start md:self-auto shrink-0">
           <button
             onClick={onCreateRequisition}
             className="self-start md:self-auto px-5 py-3 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-indigo-500/25 flex items-center gap-2 shrink-0 transition-all transform hover:-translate-y-0.5 border border-indigo-400/30"
@@ -132,6 +135,18 @@ export const DeskDashboard: React.FC<DeskDashboardProps> = ({
             <PlusCircle className="w-4 h-4" />
             <span>+ Create New Data Demand (Requisition)</span>
           </button>
+            <button
+              onClick={() => {
+                const n = downloadCompiledPendencyCSV(deskRequisitions, submissions, fieldUnits, desk.name);
+                if (n === 0) alert('कोई ITI लंबित नहीं है।');
+              }}
+              className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs border border-white/25 flex items-center justify-center gap-2 transition-colors"
+              title="इस प्रकोष्ठ की सभी सक्रिय मांगों की ITI-वार संकलित लंबित सूची"
+            >
+              <Download className="w-4 h-4" />
+              <span>ITI-वार संकलित लंबित सूची डाउनलोड</span>
+            </button>
+          </div>
         </div>
       </div>
 
