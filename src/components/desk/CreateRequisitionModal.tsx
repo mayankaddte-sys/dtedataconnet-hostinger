@@ -48,6 +48,9 @@ import {
   BookmarkPlus
 } from 'lucide-react';
 import { ManageBunchesModal } from './ManageBunchesModal';
+import { generateFieldsFromPerforma } from '../../utils/performaParser';
+import { OptionsRangeHelper, RowSourceSelector, TableColumnsEditor } from './FieldConfigParts';
+import { validateCustomFields } from '../../utils/fieldValue';
 
 interface CreateRequisitionModalProps {
   isOpen: boolean;
@@ -116,6 +119,14 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
   const [performaFileUrl, setPerformaFileUrl] = useState<string>('');
   const [performaFileSize, setPerformaFileSize] = useState<number>(0);
   const performaFileInputRef = useRef<HTMLInputElement>(null);
+
+  // "Generate form from an uploaded performa" (Excel / Word / CSV)
+  const generateInputRef = useRef<HTMLInputElement>(null);
+  const [genBusy, setGenBusy] = useState<boolean>(false);
+  // true while the blank-template file is still being read into memory
+  const [performaReading, setPerformaReading] = useState<boolean>(false);
+  const [genAttachTemplate, setGenAttachTemplate] = useState<boolean>(true);
+  const [genResult, setGenResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Target Scope - 5 Options
   const [targetScope, setTargetScope] = useState<TargetScopeType>('ALL_ITIS');
@@ -251,11 +262,20 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
     setPerformaFileName(file.name);
     setPerformaFileSize(file.size);
 
+    setPerformaFileUrl('');
+    setPerformaReading(true);
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
         setPerformaFileUrl(reader.result);
       }
+      setPerformaReading(false);
+    };
+    reader.onerror = () => {
+      setPerformaReading(false);
+      setPerformaFileName('');
+      setPerformaFileSize(0);
+      alert('प्रपत्र टेम्पलेट फ़ाइल पढ़ी नहीं जा सकी। कृपया दोबारा चुनें।');
     };
     reader.readAsDataURL(file);
   };
@@ -263,6 +283,32 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
   const handlePerformaFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       processPerformaFile(e.target.files[0]);
+    }
+  };
+
+  const handleGenerateFromPerforma = async (file?: File) => {
+    if (!file) return;
+    setGenBusy(true);
+    setGenResult(null);
+    try {
+      const { fields, notes } = await generateFieldsFromPerforma(file);
+      let replace = true;
+      if (customFields.length > 0) {
+        replace = window.confirm(
+          `अभी फ़ॉर्म में ${customFields.length} फ़ील्ड्स हैं।\n\nOK = इन्हें हटाकर फ़ाइल से बने ${fields.length} नए फ़ील्ड्स रखें\nCancel = नए ${fields.length} फ़ील्ड्स मौजूदा सूची के अंत में जोड़ें`
+        );
+      }
+      setCustomFields(replace ? fields : [...customFields, ...fields]);
+      if (genAttachTemplate && !performaFileName) processPerformaFile(file);
+      setGenResult({
+        ok: true,
+        text: `${fields.length} फ़ील्ड्स बनाए गए। नीचे सूची में जाँचकर आवश्यकतानुसार नाम, प्रकार, अनिवार्यता बदलें। ${notes.join(' ')}`
+      });
+    } catch (err: any) {
+      setGenResult({ ok: false, text: err?.message || 'फ़ाइल से फ़ॉर्म नहीं बन सका।' });
+    } finally {
+      setGenBusy(false);
+      if (generateInputRef.current) generateInputRef.current.value = '';
     }
   };
 
@@ -283,18 +329,27 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
         type === 'select' ? 'ड्रॉपडाउन विकल्प फ़ील्ड' :
         type === 'date' ? 'नया दिनांक फ़ील्ड (Date)' :
         type === 'checkbox' ? 'नया चेकबॉक्स फ़ील्ड (Checkbox)' :
+        type === 'table_grid' ? 'विवरण सूची (प्रत्येक की जानकारी भरें)' :
         'नया टेक्स्ट फ़ील्ड',
       type,
       placeholder: '',
       required: true,
       options: type === 'select' || type === 'radio' || type === 'checkbox' ? ['विकल्प 1', 'विकल्प 2', 'विकल्प 3'] : undefined,
-      unit: type === 'number' ? 'संख्या' : undefined
+      unit: type === 'number' ? 'संख्या' : undefined,
+      tableColumns: type === 'table_grid'
+        ? [{ id: `col_${Date.now().toString(36)}0`, label: 'नाम', type: 'text', required: true }]
+        : undefined
     };
     setCustomFields([...customFields, newField]);
   };
 
   const handleRemoveCustomField = (fieldId: string) => {
-    setCustomFields(customFields.filter(f => f.id !== fieldId));
+    // tables that took their row count from the removed field become manual tables
+    setCustomFields(
+      customFields
+        .filter(f => f.id !== fieldId)
+        .map(f => (f.rowsFromFieldId === fieldId ? { ...f, rowsFromFieldId: undefined } : f))
+    );
   };
 
   const handleUpdateField = (fieldId: string, updates: Partial<CustomFieldDefinition>) => {
@@ -309,9 +364,17 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
       return;
     }
 
-    if ((mode === 'CUSTOM_FORM' || mode === 'HYBRID') && performaFileInputRef.current?.files?.length && !performaFileUrl) {
-      alert('कृपया प्रपत्र टेम्पलेट फ़ाइल अपलोड पूर्ण होने की प्रतीक्षा करें।');
+    if ((mode === 'CUSTOM_FORM' || mode === 'HYBRID') && (performaReading || genBusy || (performaFileName && !performaFileUrl))) {
+      alert('कृपया प्रपत्र टेम्पलेट फ़ाइल अपलोड / फ़ॉर्म निर्माण पूर्ण होने की प्रतीक्षा करें।');
       return;
+    }
+
+    if (mode === 'CUSTOM_FORM' || mode === 'HYBRID') {
+      const formError = validateCustomFields(customFields);
+      if (formError) {
+        alert(formError);
+        return;
+      }
     }
 
     const desk = desks.find(d => d.id === selectedDeskId);
@@ -1576,6 +1639,52 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
             {/* Custom Form Fields Builder */}
             {(mode === 'CUSTOM_FORM' || mode === 'HYBRID') && (
               <div className="space-y-4 pt-2">
+                {/* Generate the form fields automatically from an uploaded performa */}
+                <div className="p-4 bg-indigo-50/60 border border-indigo-200 rounded-xl space-y-2.5">
+                  <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs">
+                    <Sparkles className="w-4 h-4 text-indigo-700" />
+                    <span>प्रपत्र से फ़ॉर्म स्वतः बनाएँ (Generate Form from Performa)</span>
+                  </div>
+                  <p className="text-[11px] text-indigo-800">
+                    अपना Excel (.xlsx), Word (.docx) या CSV प्रपत्र चुनें — उसकी तालिका के कॉलम / "विवरण : ____" पंक्तियों से फ़ील्ड्स अपने-आप बन जाएँगे, जिन्हें आप नीचे बदल सकते हैं। PDF व पुरानी .xls/.doc फ़ाइलें नहीं पढ़ी जा सकतीं।
+                  </p>
+                  <input
+                    ref={generateInputRef}
+                    type="file"
+                    accept=".xlsx,.docx,.csv"
+                    className="hidden"
+                    onChange={(e) => handleGenerateFromPerforma(e.target.files?.[0])}
+                  />
+                  <label className="flex items-center gap-2 text-[11px] text-indigo-900 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={genAttachTemplate}
+                      onChange={(e) => setGenAttachTemplate(e.target.checked)}
+                    />
+                    <span>इसी फ़ाइल को इकाइयों के डाउनलोड हेतु रिक्त टेम्पलेट के रूप में भी संलग्न करें</span>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={genBusy}
+                    onClick={() => generateInputRef.current?.click()}
+                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"
+                  >
+                    <FileUp className="w-3.5 h-3.5" />
+                    <span>{genBusy ? 'फ़ाइल पढ़ी जा रही है...' : 'प्रपत्र फ़ाइल चुनें और फ़ॉर्म बनाएँ'}</span>
+                  </button>
+                  {genResult && (
+                    <div
+                      className={`p-2.5 rounded-lg text-[11px] leading-relaxed border ${
+                        genResult.ok
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                          : 'bg-rose-50 border-rose-200 text-rose-900'
+                      }`}
+                    >
+                      {genResult.text}
+                    </div>
+                  )}
+                </div>
+
                 {/* Optional: downloadable performa template, part of the
                     custom-form fields setup (not a separate mode) —
                     ITIs fill this offline alongside/instead of the
@@ -1683,6 +1792,14 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                     >
                       <Plus className="w-3 h-3" /> Checkbox
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddCustomField('table_grid')}
+                      className="px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-800 rounded text-xs font-bold flex items-center gap-1"
+                      title="जैसे: कितने प्रशिक्षक हैं → उतनी पंक्तियों में उनका विवरण"
+                    >
+                      <Plus className="w-3 h-3" /> Table / विवरण सूची
+                    </button>
                   </div>
                 </div>
 
@@ -1752,6 +1869,28 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                               placeholder="विकल्प क, विकल्प ख, विकल्प ग"
                               className="w-full text-xs px-2.5 py-1 bg-white border border-slate-300 rounded"
                             />
+                          </div>
+                        )}
+
+                        {field.type === 'select' && (
+                          <div className="sm:col-span-2">
+                            <OptionsRangeHelper
+                              onGenerate={opts => {
+                                setOptionsDraft(prev => ({ ...prev, [field.id]: opts.join(', ') }));
+                                handleUpdateField(field.id, { options: opts });
+                              }}
+                            />
+                          </div>
+                        )}
+
+                        {field.type === 'table_grid' && (
+                          <div className="sm:col-span-2 space-y-3">
+                            <RowSourceSelector
+                              field={field}
+                              allFields={customFields}
+                              onChange={patch => handleUpdateField(field.id, patch)}
+                            />
+                            <TableColumnsEditor field={field} onChange={patch => handleUpdateField(field.id, patch)} />
                           </div>
                         )}
 
