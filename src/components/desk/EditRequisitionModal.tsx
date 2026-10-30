@@ -11,6 +11,8 @@ import {
   PriorityLevel,
   FieldUnit
 } from '../../types/portal';
+import { OptionsRangeHelper, RowSourceSelector } from './FieldConfigParts';
+import { validateCustomFields } from '../../utils/fieldValue';
 import {
   X,
   Plus,
@@ -365,7 +367,7 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
       c.includes('अंतिम तिथि')
   );
   const fieldOrResourceChanged = changes.some(
-    c => c.startsWith('नया फ़ील्ड') || c.startsWith('फ़ील्ड संपादित') || c.startsWith('नया Sheet') || c.startsWith('नया Form') || c.startsWith('नया लिंक')
+    c => c.startsWith('नया फ़ील्ड') || c.startsWith('फ़ील्ड संपादित') || c.startsWith('नया Sheet') || c.startsWith('नया Form') || c.startsWith('नया लिंक') || c.startsWith('Sheet/Form संपादित')
   );
 
   const submittedCount = submissions.length;
@@ -398,7 +400,11 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
       ? `"${f.label || 'यह फ़ील्ड'}" हटाने पर यह इकाइयों को दिखना बंद हो जाएगा।\n\n${n} इकाइयों का पहले से भेजा हुआ उत्तर डेटाबेस में सुरक्षित रहेगा, पर फ़ॉर्म/रिपोर्ट में नहीं दिखेगा।\n\nक्या आप फ़ील्ड हटाना चाहते हैं?`
       : `फ़ील्ड "${f.label || 'नया फ़ील्ड'}" हटाएँ?`;
     if (!window.confirm(msg)) return;
-    setFields(prev => prev.filter(x => x.id !== f.id));
+    setFields(prev =>
+      prev
+        .filter(x => x.id !== f.id)
+        .map(x => (x.rowsFromFieldId === f.id ? { ...x, rowsFromFieldId: undefined } : x))
+    );
   };
 
   const moveField = (idx: number, dir: -1 | 1) =>
@@ -588,6 +594,8 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
     if (!title.trim()) return 'मांग का शीर्षक खाली नहीं हो सकता।';
     if (!deadlineLocal) return 'कृपया अंतिम तिथि चुनें।';
     if (targetIds.length === 0) return 'कम से कम एक लक्षित इकाई (JD/ITI) रहनी चाहिए (इकाइयाँ टैब देखें)।';
+    const formError = validateCustomFields(fields);
+    if (formError) return formError;
     for (const f of fields) {
       if (!f.label.trim()) return 'सभी फ़ील्ड का नाम/लेबल भरा होना चाहिए (फ़ील्ड टैब देखें)।';
       if ((f.type === 'select' || f.type === 'radio') && (f.options || []).length < 1)
@@ -1141,11 +1149,26 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
                                 });
                               }}
                             />
+                            {f.type === 'select' && (
+                              <div className="mt-2">
+                                <OptionsRangeHelper
+                                  onGenerate={opts => {
+                                    setOptionsDraft(d => ({ ...d, [f.id]: opts.join('\n') }));
+                                    updateField(f.id, { options: opts });
+                                  }}
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
 
                         {f.type === 'table_grid' && (
                           <div className="space-y-2">
+                            <RowSourceSelector
+                              field={f}
+                              allFields={fields}
+                              onChange={patch => updateField(f.id, patch)}
+                            />
                             <label className={labelCls}>तालिका के कॉलम</label>
                             {(f.tableColumns || []).map(c => (
                               <div key={c.id} className="flex items-center gap-2 flex-wrap p-2 bg-white border border-slate-200 rounded-lg">
@@ -1187,7 +1210,16 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    updateField(f.id, { tableColumns: (f.tableColumns || []).filter(x => x.id !== c.id) })
+                                    {
+                                      if (
+                                        answered > 0 &&
+                                        !window.confirm(
+                                          `${answered} इकाइयों ने इस तालिका में उत्तर भेजे हैं। कॉलम "${c.label || ''}" हटाने पर उसका पहले का डेटा सुरक्षित रहेगा पर समीक्षा/रिपोर्ट में नहीं दिखेगा।\n\nक्या कॉलम हटाएँ?`
+                                        )
+                                      )
+                                        return;
+                                      updateField(f.id, { tableColumns: (f.tableColumns || []).filter(x => x.id !== c.id) });
+                                    }
                                   }
                                   className="p-1 text-slate-400 hover:text-rose-600"
                                 >
