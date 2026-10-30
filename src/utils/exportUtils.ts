@@ -1,5 +1,6 @@
-import { Requisition, SubmissionRecord, FieldUnit, DirectorateDesk } from '../types/portal';
+import { Requisition, SubmissionRecord, FieldUnit, DirectorateDesk, CustomFieldDefinition } from '../types/portal';
 import { formatDateTime } from './dateUtils';
+import { formatAnswer } from './fieldValue';
 
 /**
  * Escapes a string cell value according to RFC 4180 CSV standard
@@ -13,6 +14,11 @@ function escapeCSV(val: any): string {
     str = JSON.stringify(val);
   } else {
     str = String(val);
+  }
+  // CSV/formula injection: Excel runs cells that start with = + - @ (or tab / CR).
+  // Prefix them with an apostrophe so they stay plain text; real numbers are left alone.
+  if (/^[=+\-@\t\r]/.test(str) && !(typeof val === 'number') && !/^-?\d+(\.\d+)?$/.test(str)) {
+    str = `'${str}`;
   }
   return `"${str.replace(/"/g, '""')}"`;
 }
@@ -58,7 +64,7 @@ export function exportRequisitionDataToCSV(
       if (!sub || !sub.data || sub.data[f.id] === undefined) {
         return '""';
       }
-      return escapeCSV(sub.data[f.id]);
+      return escapeCSV(formatAnswer(sub.data[f.id], f));
     });
 
     const statusText = sub 
@@ -100,7 +106,7 @@ export function exportRequisitionDataToCSV(
     `"Deadline:",${escapeCSV(formatDateTime(requisition.deadline))}`,
     `"Generated On:",${escapeCSV(formatDateTime(new Date().toISOString()))}`,
     `"Total Target Units:",${targetUnits.length}`,
-    `"Submitted Count:",${submissions.filter(s => s.requisitionId === requisition.id).length}`,
+    `"Submitted Count:",${new Set(submissions.filter(s => s.requisitionId === requisition.id).map(s => s.fieldUnitId)).size}`,
     '',
     headers.join(','),
     ...rows
@@ -145,11 +151,11 @@ export function exportSubmissionsToCSV({
   const targetReq = isSingleRequisition ? requisitions.find(r => r.id === uniqueReqIds[0]) : null;
 
   // Gather all unique custom fields present across the selected submissions or requisitions
-  const customFieldMap = new Map<string, { label: string; unit?: string }>();
+  const customFieldMap = new Map<string, { label: string; unit?: string; field?: CustomFieldDefinition }>();
 
   if (targetReq && targetReq.customFields && targetReq.customFields.length > 0) {
     targetReq.customFields.forEach(f => {
-      customFieldMap.set(f.id, { label: f.label, unit: f.unit });
+      customFieldMap.set(f.id, { label: f.label, unit: f.unit, field: f });
     });
   } else {
     // Collect from relevant requisitions
@@ -158,7 +164,7 @@ export function exportSubmissionsToCSV({
       if (req && req.customFields) {
         req.customFields.forEach(f => {
           if (!customFieldMap.has(f.id)) {
-            customFieldMap.set(f.id, { label: f.label, unit: f.unit });
+            customFieldMap.set(f.id, { label: f.label, unit: f.unit, field: f });
           }
         });
       }
@@ -235,7 +241,7 @@ export function exportSubmissionsToCSV({
       if (!sub.data || sub.data[key] === undefined || sub.data[key] === null) {
         return '""';
       }
-      return escapeCSV(sub.data[key]);
+      return escapeCSV(formatAnswer(sub.data[key], customFieldMap.get(key)?.field));
     });
 
     return [
@@ -350,7 +356,7 @@ export function exportSingleSubmissionToCSV(
       // Find custom field label if defined in requisition
       const fieldDef = requisition?.customFields?.find(f => f.id === key);
       const label = fieldDef ? `${fieldDef.label}${fieldDef.unit ? ` (${fieldDef.unit})` : ''}` : key;
-      rows.push(`${escapeCSV(label)},${escapeCSV(val)}`);
+      rows.push(`${escapeCSV(label)},${escapeCSV(formatAnswer(val, fieldDef))}`);
     });
   }
 
