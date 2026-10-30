@@ -135,6 +135,10 @@ export interface CustomFieldDefinition {
   max?: number;
   unit?: string;
   tableColumns?: TableColumnConfig[];
+  /** table_grid only: id of a dropdown/number field whose answer sets how many rows to show */
+  rowsFromFieldId?: string;
+  /** table_grid only: upper limit on rows */
+  maxRows?: number;
 }
 
 export interface GoogleSheetConfig {
