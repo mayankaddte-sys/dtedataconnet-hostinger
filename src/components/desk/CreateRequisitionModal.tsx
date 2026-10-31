@@ -49,7 +49,7 @@ import {
 } from 'lucide-react';
 import { ManageBunchesModal } from './ManageBunchesModal';
 import { generateFieldsFromPerforma } from '../../utils/performaParser';
-import { OptionsRangeHelper, RowSourceSelector, TableColumnsEditor } from './FieldConfigParts';
+import { OptionsRangeHelper, RowSourceSelector, TableColumnsEditor, GroupFieldsEditor, makeEmptyGroup } from './FieldConfigParts';
 import { validateCustomFields } from '../../utils/fieldValue';
 
 interface CreateRequisitionModalProps {
@@ -330,6 +330,7 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
         type === 'date' ? 'नया दिनांक फ़ील्ड (Date)' :
         type === 'checkbox' ? 'नया चेकबॉक्स फ़ील्ड (Checkbox)' :
         type === 'table_grid' ? 'विवरण सूची (प्रत्येक की जानकारी भरें)' :
+        type === 'repeat_group' ? 'दोहराया जाने वाला विवरण-खंड' :
         'नया टेक्स्ट फ़ील्ड',
       type,
       placeholder: '',
@@ -338,7 +339,8 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
       unit: type === 'number' ? 'संख्या' : undefined,
       tableColumns: type === 'table_grid'
         ? [{ id: `col_${Date.now().toString(36)}0`, label: 'नाम', type: 'text', required: true }]
-        : undefined
+        : undefined,
+      ...(type === 'repeat_group' ? makeEmptyGroup() : {})
     };
     setCustomFields([...customFields, newField]);
   };
@@ -1800,6 +1802,14 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                     >
                       <Plus className="w-3 h-3" /> Table / विवरण सूची
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddCustomField('repeat_group')}
+                      className="px-2 py-1 bg-violet-100 hover:bg-violet-200 text-violet-800 rounded text-xs font-bold flex items-center gap-1"
+                      title="एक खंड (अपने फ़ील्ड्स व तालिका सहित) जो हर ट्रेड/बैच/मद के लिए बार-बार भरा जाए"
+                    >
+                      <Plus className="w-3 h-3" /> विवरण-खंड (Group)
+                    </button>
                   </div>
                 </div>
 
@@ -1889,8 +1899,53 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                               field={field}
                               allFields={customFields}
                               onChange={patch => handleUpdateField(field.id, patch)}
+                              onCreateCountField={() => {
+                                const cid = `field_${Date.now()}`;
+                                const countField: CustomFieldDefinition = {
+                                  id: cid,
+                                  label: `${field.label || 'तालिका'} — कुल कितनी पंक्तियाँ भरनी हैं?`,
+                                  type: 'number',
+                                  required: true,
+                                  min: 1,
+                                  max: field.maxRows || 40
+                                };
+                                setCustomFields(prev => {
+                                  const at = prev.findIndex(x => x.id === field.id);
+                                  const next = [...prev];
+                                  next.splice(at < 0 ? next.length : at, 0, countField);
+                                  return next.map(x => (x.id === field.id ? { ...x, rowsFromFieldId: cid } : x));
+                                });
+                              }}
                             />
                             <TableColumnsEditor field={field} onChange={patch => handleUpdateField(field.id, patch)} />
+                          </div>
+                        )}
+
+                        {field.type === 'repeat_group' && (
+                          <div className="sm:col-span-2 space-y-3">
+                            <RowSourceSelector
+                              field={field}
+                              allFields={customFields}
+                              onChange={patch => handleUpdateField(field.id, patch)}
+                              onCreateCountField={() => {
+                                const cid = `field_${Date.now()}`;
+                                const countField: CustomFieldDefinition = {
+                                  id: cid,
+                                  label: `${field.label || 'खंड'} — कुल कितने ${field.itemLabel || 'खंड'} हैं?`,
+                                  type: 'number',
+                                  required: true,
+                                  min: 1,
+                                  max: field.maxRows || 40
+                                };
+                                setCustomFields(prev => {
+                                  const at = prev.findIndex(x => x.id === field.id);
+                                  const next = [...prev];
+                                  next.splice(at < 0 ? next.length : at, 0, countField);
+                                  return next.map(x => (x.id === field.id ? { ...x, rowsFromFieldId: cid } : x));
+                                });
+                              }}
+                            />
+                            <GroupFieldsEditor field={field} onChange={patch => handleUpdateField(field.id, patch)} />
                           </div>
                         )}
 
