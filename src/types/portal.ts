@@ -1,4 +1,3 @@
-
 export type UserRole =
   | 'DIRECTORATE_ADMIN'
   | 'DIRECTORATE_DESK'
@@ -113,14 +112,18 @@ export type CustomFieldType =
   | 'radio'
   | 'checkbox'
   | 'file'
-  | 'table_grid';
+  | 'table_grid'
+  /** a block of sub-fields (incl. a nested table) repeated once per trade / batch / item */
+  | 'repeat_group';
 
 export interface TableColumnConfig {
   id: string;
   label: string;
-  type: 'text' | 'number' | 'select';
+  type: 'text' | 'number' | 'select' | 'date';
   options?: string[];
   required?: boolean;
+  /** number columns: show the column's sum in a "कुल" row under the table */
+  showTotal?: boolean;
 }
 
 export interface CustomFieldDefinition {
@@ -137,8 +140,12 @@ export interface CustomFieldDefinition {
   tableColumns?: TableColumnConfig[];
   /** table_grid only: id of a dropdown/number field whose answer sets how many rows to show */
   rowsFromFieldId?: string;
-  /** table_grid only: upper limit on rows */
+  /** table_grid / repeat_group: upper limit on rows / blocks */
   maxRows?: number;
+  /** repeat_group only: the fields filled inside every block (text / number / date / select / table_grid) */
+  groupFields?: CustomFieldDefinition[];
+  /** repeat_group only: title of each block, e.g. "ट्रेड" -> "ट्रेड 1", "ट्रेड 2" */
+  itemLabel?: string;
 }
 
 export interface GoogleSheetConfig {
@@ -437,7 +444,8 @@ export interface FieldSubmissionData {
     | number
     | boolean
     | string[]
-    | TableRowData[];
+    | TableRowData[]
+    | FieldSubmissionData[];
 }
 
 /* ============================================================
