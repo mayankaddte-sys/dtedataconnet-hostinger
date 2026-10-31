@@ -35,6 +35,9 @@ const NUMBER_HINT =
   /(संख्या|कुल|total|number|\bno\.?\b|नामांकित|seats?|सीट|amount|राशि|रुपये|\brs\b|₹|%|प्रतिशत|आयु|\bage\b|count|क्षमता|capacity|छात्र|प्रशिक्षणार्थी|नामांकन|उपस्थित|रिक्त|स्वीकृत|प्रवेशित|कर्मचारी)/i;
 // (?<![\u0900-\u097F]) keeps "अतिथि" (guest) from being read as "तिथि" (date)
 const DATE_HINT = /(दिनांक|(?<![\u0900-\u097F])तिथि|\bdate\b|\bdated\b)/i;
+// headings that are identifiers / names / contact numbers - keep as text even if the sample cells look numeric
+const TEXT_HINT =
+  /((?<![\u0900-\u097F])(नाम|आदेश|पत्र|पत्रांक|क्रमांक|मोबाइल|मोबाईल|फोन|फ़ोन|कोड)(?![\u0900-\u097F])|\b(name|order|letter|ref|mobile|phone|contact|code|pin)\b)/i;
 const LONG_HINT = /(टिप्पणी|remarks?|कारण|reason|विवरण\s*दें|describe|details of)/i;
 
 const looksNumeric = (v: string) => /^-?[\d,]+(\.\d+)?%?$/.test(clean(v));
@@ -44,6 +47,7 @@ const uid = (i: number) => `field_gen_${Date.now().toString(36)}_${i}`;
 const guessFieldType = (label: string): CustomFieldType => {
   if (DATE_HINT.test(label)) return 'date';
   if (LONG_HINT.test(label)) return 'textarea';
+  if (TEXT_HINT.test(label)) return 'text';
   if (NUMBER_HINT.test(label)) return 'number';
   return 'text';
 };
@@ -227,8 +231,11 @@ function tableToFields(rows: string[][], caption: string, notes: string[], start
   // otherwise a blank grid -> Table Grid field
   const tableColumns: TableColumnConfig[] = cols.slice(0, MAX_COLUMNS).map((c, k) => {
     const samples = data.map(r => r[c.i]).filter(v => !isBlank(v));
-    const numeric = samples.length > 0 ? samples.every(looksNumeric) : NUMBER_HINT.test(c.label);
-    return { id: `col_gen_${Date.now().toString(36)}_${startIdx}_${k}`, label: c.label, type: numeric ? 'number' : 'text', required: false };
+    let colType: TableColumnConfig['type'] = 'text';
+    if (DATE_HINT.test(c.label)) colType = 'date';
+    else if (TEXT_HINT.test(c.label)) colType = 'text';
+    else if (samples.length > 0 ? samples.every(looksNumeric) : NUMBER_HINT.test(c.label)) colType = 'number';
+    return { id: `col_gen_${Date.now().toString(36)}_${startIdx}_${k}`, label: c.label, type: colType, required: false };
   });
   const prefilled = cols.filter(c => filledRatio(c.i) >= 0.8).length;
   notes.push(
