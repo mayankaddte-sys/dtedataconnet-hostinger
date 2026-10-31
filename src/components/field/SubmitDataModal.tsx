@@ -3,13 +3,16 @@ import {
   Requisition, 
   FieldUnit, 
   SubmissionRecord, 
-  FieldSubmissionData 
+  FieldSubmissionData,
+  CustomFieldDefinition,
+  TableRowData
 } from '../../types/portal';
 import { PriorityBadge } from '../common/PriorityBadge';
 import { CountdownTimer } from '../common/CountdownTimer';
 import { formatDateTime, calculateCountdown } from '../../utils/dateUtils';
 import { DigitalSignaturePad } from './DigitalSignaturePad';
 import { useBlobPreviewUrl } from '../../utils/fileUtils';
+import { linkedRowCount, normalizeGridData, MAX_GRID_ROWS } from '../../utils/fieldValue';
 import { 
   X, 
   CheckCircle2, 
@@ -186,6 +189,129 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
     }));
   };
 
+  // Table / details-list field. Rows are either added by the unit, or follow a
+  // count chosen in another field (e.g. "number of instructors" = 12 -> 12 rows).
+  const renderGrid = (field: CustomFieldDefinition) => {
+    const cols = field.tableColumns || [];
+    const stored: TableRowData[] = Array.isArray(formData[field.id]) ? (formData[field.id] as TableRowData[]) : [];
+    const n = linkedRowCount(field, formData);
+    const linked = n !== null;
+    const rows: TableRowData[] = linked ? Array.from({ length: n as number }, (_, i) => stored[i] || {}) : stored;
+    const maxRows = Math.min(field.maxRows || MAX_GRID_ROWS, MAX_GRID_ROWS);
+    const sourceLabel = (requisition.customFields || []).find(f => f.id === field.rowsFromFieldId)?.label;
+
+    const setCell = (ri: number, colId: string, v: string | number) => {
+      const next = rows.map(r => ({ ...r }));
+      while (next.length <= ri) next.push({});
+      next[ri][colId] = v;
+      handleFieldChange(field.id, next);
+    };
+
+    if (linked && n === 0) {
+      return (
+        <div className="p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-[11px] text-slate-500">
+          ऊपर "{sourceLabel || 'संबंधित प्रश्न'}" में संख्या चुनने पर उतनी पंक्तियाँ यहाँ भरने के लिए दिखेंगी।
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        {linked && (
+          <p className="text-[11px] text-indigo-700 font-medium">
+            "{sourceLabel}" के अनुसार {n} पंक्तियाँ भरें।
+          </p>
+        )}
+        {(rows.length > 0 || !linked) && (
+          <div className="overflow-x-auto border border-slate-200 rounded-lg">
+            <table className="w-full text-xs border-collapse min-w-[480px]">
+              <thead className="bg-slate-100 text-slate-700">
+                <tr>
+                  <th className="p-2 text-left w-10">क्र.</th>
+                  {cols.map(c => (
+                    <th key={c.id} className="p-2 text-left font-bold">
+                      {c.label}
+                      {c.required && <span className="text-red-500 ml-0.5">*</span>}
+                    </th>
+                  ))}
+                  {!linked && <th className="p-2 w-10" />}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan={cols.length + 2} className="p-3 text-center text-slate-500 italic">
+                      अभी कोई पंक्ति नहीं है — नीचे "+ पंक्ति जोड़ें" दबाकर विवरण भरना शुरू करें।
+                    </td>
+                  </tr>
+                )}
+                {rows.map((row, ri) => (
+                  <tr key={ri} className="border-t border-slate-100">
+                    <td className="p-2 text-slate-500">{ri + 1}</td>
+                    {cols.map(c => (
+                      <td key={c.id} className="p-1.5">
+                        {c.type === 'select' ? (
+                          <select
+                            disabled={isLocked}
+                            value={String(row[c.id] ?? '')}
+                            onChange={e => setCell(ri, c.id, e.target.value)}
+                            required={!!c.required}
+                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs disabled:bg-slate-100"
+                          >
+                            <option value="">-- चुनें --</option>
+                            {(c.options || []).map(o => (
+                              <option key={o} value={o}>{o}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type={c.type === 'number' ? 'number' : 'text'}
+                            step="any"
+                            disabled={isLocked}
+                            value={String(row[c.id] ?? '')}
+                            onChange={e => setCell(ri, c.id, c.type === 'number' && e.target.value !== '' ? Number(e.target.value) : e.target.value)}
+                            required={!!c.required}
+                            className="w-full min-w-[110px] px-2 py-1.5 bg-white border border-slate-300 rounded text-xs disabled:bg-slate-100"
+                          />
+                        )}
+                      </td>
+                    ))}
+                    {!linked && (
+                      <td className="p-1.5 text-center">
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          onClick={() => handleFieldChange(field.id, rows.filter((_, i) => i !== ri))}
+                          className="text-slate-400 hover:text-rose-600"
+                          title="पंक्ति हटाएँ"
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!linked && (
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={isLocked || rows.length >= maxRows}
+              onClick={() => handleFieldChange(field.id, [...rows, {}])}
+              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-lg text-xs font-bold disabled:opacity-50"
+            >
+              + पंक्ति जोड़ें
+            </button>
+            <span className="text-[11px] text-slate-500">{rows.length} पंक्तियाँ (अधिकतम {maxRows})</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Handle file selection (both browse and drag-and-drop)
   const processUploadedFile = (file: File) => {
     if (!file) return;
@@ -243,6 +369,24 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
       return;
     }
 
+    // Table / details-list fields: a required manual list needs at least one row,
+    // and every required column must be filled in each row.
+    for (const gf of (requisition.customFields || []).filter(f => f.type === 'table_grid')) {
+      const rows = (normalizeGridData([gf], formData)[gf.id] as TableRowData[]) || [];
+      const isLinked = linkedRowCount(gf, formData) !== null;
+      if (!isLinked && gf.required && rows.length === 0) {
+        alert(`कृपया \"${gf.label}\" में कम से कम एक पंक्ति जोड़ें।`);
+        return;
+      }
+      for (let i = 0; i < rows.length; i++) {
+        const miss = (gf.tableColumns || []).find(c => c.required && String(rows[i][c.id] ?? '').trim() === '');
+        if (miss) {
+          alert(`\"${gf.label}\" की पंक्ति ${i + 1} में \"${miss.label}\" भरें।`);
+          return;
+        }
+      }
+    }
+
     const missingResource = (requisition.additionalResources || []).find(
       r => r.responseRequired && !String(formData[`__res_${r.id}`] ?? '').trim()
     );
@@ -295,7 +439,7 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
       status: 'SUBMITTED',
       isLate: isExpired,
       lateJustification: isExpired ? lateJustification.trim() : undefined,
-      data: formData,
+      data: normalizeGridData(requisition.customFields || [], formData),
       googleSheetSubmittedUrl: googleSheetSubmittedUrl.trim() || undefined,
       googleFormResponseId: googleFormResponseId.trim() || undefined,
       uploadedDocumentName: finalDocName,
@@ -756,7 +900,9 @@ export const SubmitDataModal: React.FC<SubmitDataModalProps> = ({
                         )}
 
                         {/* Render by field type */}
-                        {field.type === 'textarea' ? (
+                        {field.type === 'table_grid' ? (
+                          renderGrid(field)
+                        ) : field.type === 'textarea' ? (
                           <textarea
                             disabled={isLocked}
                             value={String(value)}
