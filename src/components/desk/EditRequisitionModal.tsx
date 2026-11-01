@@ -13,6 +13,7 @@ import {
 } from '../../types/portal';
 import { OptionsRangeHelper, RowSourceSelector, GroupFieldsEditor, TableColumnsEditor, makeEmptyGroup } from './FieldConfigParts';
 import { validateCustomFields } from '../../utils/fieldValue';
+import { PasteUnitsPanel } from './PasteUnitsPanel';
 import {
   X,
   Plus,
@@ -1333,6 +1334,8 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
                   ))}
                 </div>
               </div>
+
+              <PasteUnitsPanel fieldUnits={fieldUnits} existingIds={targetIds} onAdd={ids => addPickedUnits(ids)} />
 
               {/* Add units */}
               <div className="p-4 border border-dashed border-indigo-300 rounded-xl bg-indigo-50/40 space-y-3">
