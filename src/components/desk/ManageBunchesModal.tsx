@@ -14,6 +14,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { FieldUnit, FieldUnitBunch } from '../../types/portal';
+import { PasteUnitsPanel } from './PasteUnitsPanel';
 
 interface ManageBunchesModalProps {
   isOpen: boolean;
@@ -329,6 +330,12 @@ export const ManageBunchesModal: React.FC<ManageBunchesModalProps> = ({
                 </div>
               )}
             </div>
+
+            <PasteUnitsPanel
+              fieldUnits={fieldUnits}
+              existingIds={editUnitIds}
+              onAdd={ids => setEditUnitIds(prev => [...prev, ...ids.filter(id => !prev.includes(id))])}
+            />
 
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
