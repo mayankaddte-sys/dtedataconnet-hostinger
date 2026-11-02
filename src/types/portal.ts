@@ -1,3 +1,4 @@
+
 export type UserRole =
   | 'DIRECTORATE_ADMIN'
   | 'DIRECTORATE_DESK'
@@ -146,7 +147,15 @@ export interface CustomFieldDefinition {
   groupFields?: CustomFieldDefinition[];
   /** repeat_group only: title of each block, e.g. "ट्रेड" -> "ट्रेड 1", "ट्रेड 2" */
   itemLabel?: string;
+  /** file only: which kinds of files may be uploaded (empty = all four kinds) */
+  fileTypes?: FileKind[];
+  /** file only: how many files may be uploaded (default 1) */
+  maxFiles?: number;
+  /** file only: size limit per file in MB (default 3, never above 5) */
+  maxFileSizeMB?: number;
 }
+
+export type FileKind = 'pdf' | 'excel' | 'word' | 'image';
 
 export interface GoogleSheetConfig {
   sheetUrl: string;
@@ -438,6 +447,16 @@ export interface TableRowData {
   [columnId: string]: string | number;
 }
 
+/** one file uploaded into a "file" field (kept inside the submission as a data URL) */
+export interface UploadedFile {
+  /** stable id; links the file entry in `data` to its content in the separate attachments column */
+  id?: string;
+  name: string;
+  size: number;
+  type: string;
+  dataUrl: string;
+}
+
 export interface FieldSubmissionData {
   [fieldId: string]:
     | string
@@ -445,7 +464,8 @@ export interface FieldSubmissionData {
     | boolean
     | string[]
     | TableRowData[]
-    | FieldSubmissionData[];
+    | FieldSubmissionData[]
+    | UploadedFile[];
 }
 
 /* ============================================================
