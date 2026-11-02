@@ -1,4 +1,5 @@
 import { apiClient as supabase } from './apiClient';
+import { mergeAttachments, splitAttachments } from '../utils/attachments';
 import {
   Requisition,
   SubmissionRecord,
@@ -150,7 +151,8 @@ const toSubmission = (r: any): SubmissionRecord => ({
   status: r.status,
   isLate: r.is_late,
   lateJustification: r.late_justification ?? undefined,
-  data: r.data ?? {},
+  // uploaded files live in the separate `attachments` column (only present on a full read)
+  data: mergeAttachments(r.data ?? {}, r.attachments),
   googleSheetSubmittedUrl: r.google_sheet_submitted_url ?? undefined,
   googleFormResponseId: r.google_form_response_id ?? undefined,
   uploadedDocumentName: r.uploaded_document_name ?? undefined,
@@ -167,7 +169,9 @@ const toSubmission = (r: any): SubmissionRecord => ({
   revisionNotes: r.revision_notes ?? undefined
 });
 
-const fromSubmission = (s: SubmissionRecord) => ({
+const fromSubmission = (s: SubmissionRecord) => {
+  const { slim, attachments } = splitAttachments(s.data ?? {});
+  const row: Record<string, unknown> = {
   id: s.id,
   requisition_id: s.requisitionId,
   field_unit_id: s.fieldUnitId,
@@ -182,7 +186,7 @@ const fromSubmission = (s: SubmissionRecord) => ({
   status: s.status,
   is_late: s.isLate,
   late_justification: s.lateJustification ?? null,
-  data: s.data ?? {},
+  data: slim,
   google_sheet_submitted_url: s.googleSheetSubmittedUrl ?? null,
   google_form_response_id: s.googleFormResponseId ?? null,
   uploaded_document_name: s.uploadedDocumentName ?? null,
@@ -197,7 +201,19 @@ const fromSubmission = (s: SubmissionRecord) => ({
   desk_reviewed_by: s.deskReviewedBy ?? null,
   desk_comments: s.deskComments ?? null,
   revision_notes: s.revisionNotes ?? null
-});
+};
+
+  // Large columns are written only when this record actually carries them. A record that came from
+  // the dashboard list (which leaves them out) must not blank them in the database when it is saved
+  // again, e.g. when the desk approves it or asks for a revision.
+  if (!s.uploadedDocumentUrl) delete row.uploaded_document_url;
+  if (!s.digitalSignatureDataUrl) delete row.digital_signature_data_url;
+  if (!s.performaSubmissionFileUrl) delete row.performa_submission_file_url;
+  // `attachments` exists only after the add_attachments_column.sql migration; send it only when
+  // there really are uploaded files, so forms without file fields keep working before the migration.
+  if (Object.keys(attachments).length > 0) row.attachments = JSON.stringify(attachments);
+  return row;
+};
 
 const toExtension = (r: any): ExtensionRequest => ({
   id: r.id,
