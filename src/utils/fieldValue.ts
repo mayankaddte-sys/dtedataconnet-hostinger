@@ -69,6 +69,8 @@ export function formatAnswer(value: unknown, field?: CustomFieldDefinition): str
   if (value === undefined || value === null) return '';
   if (Array.isArray(value)) {
     if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
+      if (field?.type === 'file' || typeof (value[0] as { dataUrl?: unknown }).dataUrl === 'string')
+        return (value as { name: string; size: number }[]).map(f => `${f.name} (${Math.max(1, Math.round(f.size / 1024))} KB)`).join('; ');
       if (field?.type === 'repeat_group' || (field?.groupFields && field.groupFields.length)) {
         const title = field?.itemLabel || field?.label || 'खंड';
         return (value as FieldSubmissionData[])
@@ -103,6 +105,9 @@ export function validateCustomFields(fields: CustomFieldDefinition[], depth = 0)
     if (!f.label || !f.label.trim()) return 'सभी फ़ील्ड का नाम/प्रश्न भरा होना चाहिए।';
     if ((f.type === 'select' || f.type === 'radio') && (f.options || []).filter(o => o.trim()).length < 1)
       return `${name} के लिए कम से कम एक विकल्प दर्ज करें।`;
+
+    if (f.type === 'file' && ((f.maxFiles || 1) < 1 || (f.maxFiles || 1) > 10 || (f.maxFileSizeMB || 3) < 1 || (f.maxFileSizeMB || 3) > 5))
+      return `${name} फ़ाइल-फ़ील्ड में फ़ाइलों की संख्या 1 से 10 और आकार 1 से 5 MB के बीच रखें।`;
 
     if (f.type === 'repeat_group') {
       const subs = f.groupFields || [];
