@@ -3,7 +3,8 @@
    - RowSourceSelector  : table rows are typed by hand OR follow another field's answer
    - TableColumnsEditor : columns of a table-grid field                                  */
 import React, { useState } from 'react';
-import { CustomFieldDefinition, TableColumnConfig } from '../../types/portal';
+import { CustomFieldDefinition, FileKind, TableColumnConfig } from '../../types/portal';
+import { FILE_KINDS, MAX_FILE_MB_LIMIT, MAX_FILES_LIMIT, DEFAULT_FILE_MB } from '../../utils/fileFields';
 import { Plus, Trash2 } from 'lucide-react';
 import { MAX_GRID_ROWS } from '../../utils/fieldValue';
 
@@ -188,6 +189,65 @@ export const TableColumnsEditor: React.FC<{
   );
 };
 
+/* ---------------- document / report upload ---------------- */
+export const FILE_FIELD_DEFAULTS: Pick<CustomFieldDefinition, 'fileTypes' | 'maxFiles' | 'maxFileSizeMB'> = {
+  fileTypes: ['pdf'],
+  maxFiles: 1,
+  maxFileSizeMB: DEFAULT_FILE_MB
+};
+
+export const FileFieldConfig: React.FC<{
+  field: CustomFieldDefinition;
+  onChange: (patch: Partial<CustomFieldDefinition>) => void;
+}> = ({ field, onChange }) => {
+  const kinds = (field.fileTypes || []) as FileKind[];
+  const toggle = (k: FileKind) =>
+    onChange({ fileTypes: kinds.includes(k) ? kinds.filter(x => x !== k) : [...kinds, k] });
+  return (
+    <div className="space-y-2.5 p-3 bg-white border border-slate-200 rounded-lg">
+      <div>
+        <label className={labelCls}>कौन-से प्रकार की फ़ाइल स्वीकार होगी?</label>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {(Object.keys(FILE_KINDS) as FileKind[]).map(k => (
+            <label key={k} className="flex items-center gap-1.5 text-[11px] cursor-pointer">
+              <input type="checkbox" checked={kinds.includes(k)} onChange={() => toggle(k)} />
+              {FILE_KINDS[k].label}
+            </label>
+          ))}
+        </div>
+        {kinds.length === 0 && <p className="text-[11px] text-amber-700 mt-1">कुछ न चुनने पर चारों प्रकार स्वीकार होंगे।</p>}
+      </div>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <label className="text-[11px] font-medium text-slate-600">कितनी फ़ाइलें (अधिकतम)</label>
+          <input
+            type="number"
+            min={1}
+            max={MAX_FILES_LIMIT}
+            className={`${inputCls} w-20`}
+            value={field.maxFiles ?? 1}
+            onChange={e => onChange({ maxFiles: Math.min(MAX_FILES_LIMIT, Math.max(1, Number(e.target.value) || 1)) })}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-[11px] font-medium text-slate-600">प्रति फ़ाइल आकार (MB)</label>
+          <input
+            type="number"
+            min={1}
+            max={MAX_FILE_MB_LIMIT}
+            className={`${inputCls} w-20`}
+            value={field.maxFileSizeMB ?? DEFAULT_FILE_MB}
+            onChange={e => onChange({ maxFileSizeMB: Math.min(MAX_FILE_MB_LIMIT, Math.max(1, Number(e.target.value) || DEFAULT_FILE_MB)) })}
+          />
+        </div>
+      </div>
+      <p className="text-[11px] text-slate-500">
+        फ़ाइलें इकाई के उत्तर के साथ ही सुरक्षित होती हैं, इसलिए एक उत्तर में सारी फ़ाइलों का कुल आकार लगभग 9 MB तक ही रखें। बड़ी रिपोर्ट के लिए इकाई से PDF कंप्रेस करवाएँ।
+      </p>
+    </div>
+  );
+};
+
 /* ---------------- repeating group ("trade-wise" blocks) ---------------- */
 const subId = (n: number) => `sub_${Date.now().toString(36)}${n}`;
 
@@ -230,6 +290,7 @@ const SUB_TYPE_LABELS: Record<string, string> = {
   date: 'तिथि',
   select: 'Dropdown',
   table_grid: 'तालिका (Table)',
+  file: 'दस्तावेज़ अपलोड (File)',
   repeat_group: 'दोहराया खंड (Group)'
 };
 
@@ -255,6 +316,7 @@ export const GroupFieldsEditor: React.FC<{
       required: true,
       ...(type === 'select' ? { options: [] } : {}),
       ...(type === 'repeat_group' ? makeEmptyGroup() : {}),
+      ...(type === 'file' ? FILE_FIELD_DEFAULTS : {}),
       ...(type === 'table_grid'
         ? { tableColumns: [{ id: `col_${Date.now().toString(36)}0`, label: '', type: 'text' as const, required: true }] }
         : {})
@@ -307,6 +369,7 @@ export const GroupFieldsEditor: React.FC<{
                   const patch: Partial<CustomFieldDefinition> = { type: t };
                   if (t === 'select' && !s.options) patch.options = [];
                   if (t === 'repeat_group' && !s.groupFields) Object.assign(patch, makeEmptyGroup());
+                  if (t === 'file' && !s.fileTypes) Object.assign(patch, FILE_FIELD_DEFAULTS);
                   if (t === 'table_grid' && !s.tableColumns)
                     patch.tableColumns = [{ id: `col_${Date.now().toString(36)}0`, label: '', type: 'text', required: true }];
                   updateSub(s.id, patch);
@@ -372,6 +435,8 @@ export const GroupFieldsEditor: React.FC<{
               </div>
             )}
 
+            {s.type === 'file' && <FileFieldConfig field={s} onChange={patch => updateSub(s.id, patch)} />}
+
             {s.type === 'repeat_group' && (
               <div className="space-y-2 pl-2 border-l-2 border-violet-300">
                 <RowSourceSelector field={s} allFields={subs} onChange={patch => updateSub(s.id, patch)} />
@@ -383,8 +448,8 @@ export const GroupFieldsEditor: React.FC<{
 
         <div className="flex flex-wrap gap-1.5">
           {(depth < 2
-            ? (['text', 'number', 'select', 'date', 'table_grid', 'repeat_group'] as const)
-            : (['text', 'number', 'select', 'date', 'table_grid'] as const)
+            ? (['text', 'number', 'select', 'date', 'table_grid', 'file', 'repeat_group'] as const)
+            : (['text', 'number', 'select', 'date', 'table_grid', 'file'] as const)
           ).map(t => (
             <button
               key={t}
