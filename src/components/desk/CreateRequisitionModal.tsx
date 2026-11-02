@@ -49,8 +49,9 @@ import {
 } from 'lucide-react';
 import { ManageBunchesModal } from './ManageBunchesModal';
 import { generateFieldsFromPerforma } from '../../utils/performaParser';
-import { OptionsRangeHelper, RowSourceSelector, TableColumnsEditor, GroupFieldsEditor, makeEmptyGroup } from './FieldConfigParts';
+import { OptionsRangeHelper, RowSourceSelector, TableColumnsEditor, GroupFieldsEditor, makeEmptyGroup, FileFieldConfig, FILE_FIELD_DEFAULTS } from './FieldConfigParts';
 import { validateCustomFields } from '../../utils/fieldValue';
+import { exportFormTemplate, parseFormTemplate } from '../../utils/formTemplate';
 
 interface CreateRequisitionModalProps {
   isOpen: boolean;
@@ -122,6 +123,7 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
 
   // "Generate form from an uploaded performa" (Excel / Word / CSV)
   const generateInputRef = useRef<HTMLInputElement>(null);
+  const templateJsonInputRef = useRef<HTMLInputElement>(null);
   const [genBusy, setGenBusy] = useState<boolean>(false);
   // true while the blank-template file is still being read into memory
   const [performaReading, setPerformaReading] = useState<boolean>(false);
@@ -312,6 +314,43 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
     }
   };
 
+  // Load a ready-made form (JSON file) - groups, nested groups and tables included
+  const handleLoadFormTemplate = async (file?: File) => {
+    if (!file) return;
+    setGenResult(null);
+    try {
+      const { fields, error } = parseFormTemplate(await file.text());
+      if (error) {
+        setGenResult({ ok: false, text: error });
+        return;
+      }
+      let replace = true;
+      if (customFields.length > 0) {
+        replace = window.confirm(
+          `अभी फ़ॉर्म में ${customFields.length} फ़ील्ड्स हैं।\n\nOK = इन्हें हटाकर फ़ाइल के ${fields.length} फ़ील्ड्स रखें\nCancel = फ़ाइल के ${fields.length} फ़ील्ड्स मौजूदा सूची के अंत में जोड़ें`
+        );
+      }
+      setCustomFields(replace ? fields : [...customFields, ...fields]);
+      setGenResult({ ok: true, text: `फ़ाइल से ${fields.length} फ़ील्ड्स लोड हुए। नीचे सूची में जाँचकर आगे बढ़ें।` });
+    } catch {
+      setGenResult({ ok: false, text: 'फ़ाइल पढ़ी नहीं जा सकी।' });
+    } finally {
+      if (templateJsonInputRef.current) templateJsonInputRef.current.value = '';
+    }
+  };
+
+  const handleSaveFormTemplate = () => {
+    const blob = new Blob([exportFormTemplate(customFields, title)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `form-template-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleRemoveOrder = () => {
     setOrderDocumentName('');
     setOrderDocumentUrl('');
@@ -331,6 +370,7 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
         type === 'checkbox' ? 'नया चेकबॉक्स फ़ील्ड (Checkbox)' :
         type === 'table_grid' ? 'विवरण सूची (प्रत्येक की जानकारी भरें)' :
         type === 'repeat_group' ? 'दोहराया जाने वाला विवरण-खंड' :
+        type === 'file' ? 'रिपोर्ट / दस्तावेज़ अपलोड करें' :
         'नया टेक्स्ट फ़ील्ड',
       type,
       placeholder: '',
@@ -340,7 +380,8 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
       tableColumns: type === 'table_grid'
         ? [{ id: `col_${Date.now().toString(36)}0`, label: 'नाम', type: 'text', required: true }]
         : undefined,
-      ...(type === 'repeat_group' ? makeEmptyGroup() : {})
+      ...(type === 'repeat_group' ? makeEmptyGroup() : {}),
+      ...(type === 'file' ? FILE_FIELD_DEFAULTS : {})
     };
     setCustomFields([...customFields, newField]);
   };
@@ -1674,6 +1715,32 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                     <FileUp className="w-3.5 h-3.5" />
                     <span>{genBusy ? 'फ़ाइल पढ़ी जा रही है...' : 'प्रपत्र फ़ाइल चुनें और फ़ॉर्म बनाएँ'}</span>
                   </button>
+                  <div className="flex flex-wrap gap-2 pt-1 border-t border-indigo-200">
+                    <input
+                      ref={templateJsonInputRef}
+                      type="file"
+                      accept=".json,application/json"
+                      className="hidden"
+                      onChange={(e) => handleLoadFormTemplate(e.target.files?.[0])}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => templateJsonInputRef.current?.click()}
+                      className="px-3 py-1.5 bg-white hover:bg-indigo-50 border border-indigo-300 text-indigo-800 rounded-lg text-xs font-bold"
+                      title="पहले से सहेजी / साझा की गई फ़ॉर्म-फ़ाइल (JSON) लोड करें — Group व तालिका सहित"
+                    >
+                      तैयार फ़ॉर्म-फ़ाइल (JSON) लोड करें
+                    </button>
+                    <button
+                      type="button"
+                      disabled={customFields.length === 0}
+                      onClick={handleSaveFormTemplate}
+                      className="px-3 py-1.5 bg-white hover:bg-indigo-50 border border-indigo-300 text-indigo-800 rounded-lg text-xs font-bold disabled:opacity-50"
+                      title="अभी का फ़ॉर्म फ़ाइल के रूप में सहेजें, ताकि दोबारा या दूसरे प्रकोष्ठ में उपयोग हो सके"
+                    >
+                      वर्तमान फ़ॉर्म फ़ाइल में सहेजें
+                    </button>
+                  </div>
                   {genResult && (
                     <div
                       className={`p-2.5 rounded-lg text-[11px] leading-relaxed border ${
@@ -1810,6 +1877,14 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                     >
                       <Plus className="w-3 h-3" /> विवरण-खंड (Group)
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddCustomField('file')}
+                      className="px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-xs font-bold flex items-center gap-1"
+                      title="इकाई से रिपोर्ट / प्रमाण-पत्र / स्कैन की हुई फ़ाइल अपलोड करवाएँ"
+                    >
+                      <Plus className="w-3 h-3" /> दस्तावेज़ अपलोड (File)
+                    </button>
                   </div>
                 </div>
 
@@ -1918,6 +1993,12 @@ export const CreateRequisitionModal: React.FC<CreateRequisitionModalProps> = ({
                               }}
                             />
                             <TableColumnsEditor field={field} onChange={patch => handleUpdateField(field.id, patch)} />
+                          </div>
+                        )}
+
+                        {field.type === 'file' && (
+                          <div className="sm:col-span-2">
+                            <FileFieldConfig field={field} onChange={patch => handleUpdateField(field.id, patch)} />
                           </div>
                         )}
 

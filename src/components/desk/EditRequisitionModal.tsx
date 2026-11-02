@@ -11,7 +11,7 @@ import {
   PriorityLevel,
   FieldUnit
 } from '../../types/portal';
-import { OptionsRangeHelper, RowSourceSelector, GroupFieldsEditor, TableColumnsEditor, makeEmptyGroup } from './FieldConfigParts';
+import { OptionsRangeHelper, RowSourceSelector, GroupFieldsEditor, TableColumnsEditor, makeEmptyGroup, FileFieldConfig, FILE_FIELD_DEFAULTS } from './FieldConfigParts';
 import { validateCustomFields } from '../../utils/fieldValue';
 import { PasteUnitsPanel } from './PasteUnitsPanel';
 import {
@@ -391,7 +391,8 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
       ...(type === 'table_grid'
         ? { tableColumns: [{ id: uid('col'), label: '', type: 'text' as const }] }
         : {}),
-      ...(type === 'repeat_group' ? { label: 'विवरण-खंड', ...makeEmptyGroup() } : {})
+      ...(type === 'repeat_group' ? { label: 'विवरण-खंड', ...makeEmptyGroup() } : {}),
+      ...(type === 'file' ? { label: 'रिपोर्ट / दस्तावेज़ अपलोड करें', ...FILE_FIELD_DEFAULTS } : {})
     };
     setFields(prev => [...prev, f]);
     setExpandedFieldId(id);
@@ -1078,6 +1079,7 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
                                 if (t === 'table_grid' && !f.tableColumns)
                                   patch.tableColumns = [{ id: uid('col'), label: '', type: 'text' }];
                                 if (t === 'repeat_group' && !f.groupFields) Object.assign(patch, makeEmptyGroup());
+                                if (t === 'file' && !f.fileTypes) Object.assign(patch, FILE_FIELD_DEFAULTS);
                                 updateField(f.id, patch);
                               }}
                             >
@@ -1203,6 +1205,8 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
                             />
                           </div>
                         )}
+                        {f.type === 'file' && <FileFieldConfig field={f} onChange={patch => updateField(f.id, patch)} />}
+
                         {f.type === 'repeat_group' && (
                           <div className="space-y-2">
                             <RowSourceSelector
@@ -1240,7 +1244,6 @@ export const EditRequisitionModal: React.FC<EditRequisitionModalProps> = ({
                 <div className="font-bold text-indigo-900 mb-2">+ नया फ़ील्ड जोड़ें</div>
                 <div className="flex flex-wrap gap-1.5">
                   {(Object.keys(FIELD_TYPE_LABELS) as CustomFieldType[])
-                    .filter(t => t !== 'file')
                     .map(t => (
                       <button
                         key={t}
