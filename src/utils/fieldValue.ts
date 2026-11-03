@@ -17,6 +17,31 @@ export function linkedRowCount(field: CustomFieldDefinition, data: FieldSubmissi
   return Math.min(n, field.maxRows || MAX_GRID_ROWS, MAX_GRID_ROWS);
 }
 
+/**
+ * rowSource tables: one row per master-list entry of the division chosen in the linked field.
+ * Master values (name, reg. no. ...) are always refreshed; what the unit typed is kept (matched by reg. no.).
+ */
+export function sourceRowsFor(field: CustomFieldDefinition, data: FieldSubmissionData): TableRowData[] {
+  const src = field.rowSource;
+  if (!src) return [];
+  const division = String(data[src.divisionFieldId] ?? '');
+  if (!division) return [];
+  const cols = field.tableColumns || [];
+  const keyCol = cols.find(c => c.sourceKey === 'regno');
+  const stored: TableRowData[] = Array.isArray(data[field.id]) ? (data[field.id] as TableRowData[]) : [];
+  const prevByKey = new Map<string, TableRowData>();
+  if (keyCol) stored.forEach(r => prevByKey.set(String(r?.[keyCol.id] ?? ''), r));
+  return src.rows
+    .filter(m => m.division === division)
+    .map(m => {
+      const row: TableRowData = { ...(prevByKey.get(m.regno) || {}) };
+      cols.forEach(c => {
+        if (c.sourceKey) row[c.id] = m[c.sourceKey] ?? '';
+      });
+      return row;
+    });
+}
+
 const isEmptyRow = (row: TableRowData) =>
   Object.values(row || {}).every(v => v === '' || v === undefined || v === null);
 
@@ -38,7 +63,9 @@ export function normalizeGridData(fields: CustomFieldDefinition[], data: FieldSu
     if (f.type === 'table_grid') {
       const rows = Array.isArray(out[f.id]) ? (out[f.id] as TableRowData[]) : [];
       const n = linkedRowCount(f, data);
-      out[f.id] = n !== null ? Array.from({ length: n }, (_, i) => rows[i] || {}) : rows.filter(r => !isEmptyRow(r)).slice(0, cap);
+      out[f.id] = f.rowSource
+        ? sourceRowsFor(f, data)
+        : n !== null ? Array.from({ length: n }, (_, i) => rows[i] || {}) : rows.filter(r => !isEmptyRow(r)).slice(0, cap);
     } else if (f.type === 'repeat_group') {
       const inst = Array.isArray(out[f.id]) ? (out[f.id] as FieldSubmissionData[]) : [];
       const n = linkedRowCount(f, data);
@@ -132,6 +159,13 @@ export function validateCustomFields(fields: CustomFieldDefinition[], depth = 0)
       if (cols.some(c => !c.label.trim())) return `${name} तालिका के सभी कॉलम का नाम भरें।`;
       if (cols.some(c => c.type === 'select' && (c.options || []).length < 1))
         return `${name} तालिका के Dropdown कॉलम के लिए विकल्प दर्ज करें।`;
+
+      if (f.rowSource) {
+        const div = byId.get(f.rowSource.divisionFieldId);
+        if (!div || (div.type !== 'select' && div.type !== 'radio')) return `${name} तालिका का मंडल-फ़ील्ड (Dropdown) मौजूद नहीं है।`;
+        if (!Array.isArray(f.rowSource.rows) || f.rowSource.rows.length === 0) return `${name} तालिका की संस्थान-सूची खाली है।`;
+        if (!cols.some(c => c.sourceKey === 'regno')) return `${name} तालिका में App Reg. No. वाला कॉलम (sourceKey = regno) होना ज़रूरी है।`;
+      }
 
       if (f.rowsFromFieldId) {
         const src = byId.get(f.rowsFromFieldId);

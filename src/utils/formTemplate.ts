@@ -25,6 +25,7 @@ export function remapFieldIds(fields: CustomFieldDefinition[]): CustomFieldDefin
   return fields.map(f => {
     const copy: CustomFieldDefinition = { ...f, id: map.get(f.id)! };
     if (f.rowsFromFieldId) copy.rowsFromFieldId = map.get(f.rowsFromFieldId);
+    if (f.rowSource) copy.rowSource = { ...f.rowSource, divisionFieldId: map.get(f.rowSource.divisionFieldId) || f.rowSource.divisionFieldId };
     if (f.groupFields) copy.groupFields = remapFieldIds(f.groupFields);
     if (f.tableColumns) copy.tableColumns = f.tableColumns.map((c, i) => ({ ...c, id: `${uid('col')}${i}` }));
     return copy;
@@ -43,6 +44,13 @@ function checkNode(f: any, path: string): string | null {
     for (const c of f.tableColumns)
       if (!c || typeof c.id !== 'string' || typeof c.label !== 'string' || !COLUMN_TYPES.includes(c.type))
         return `${path} ("${f.label}"): किसी कॉलम का id / label / type गलत है।`;
+  }
+  if (f.rowSource !== undefined) {
+    const rs = f.rowSource;
+    if (!rs || typeof rs.divisionFieldId !== 'string' || !Array.isArray(rs.rows))
+      return `${path} (\"${f.label}\"): rowSource में divisionFieldId और rows चाहिए।`;
+    if (rs.rows.some((r: any) => !r || typeof r.division !== 'string' || typeof r.district !== 'string' || typeof r.regno !== 'string'))
+      return `${path} (\"${f.label}\"): rowSource की हर पंक्ति में division, district और regno होना चाहिए।`;
   }
   if (f.groupFields !== undefined) {
     if (!Array.isArray(f.groupFields)) return `${path} ("${f.label}"): groupFields सूची होनी चाहिए।`;
