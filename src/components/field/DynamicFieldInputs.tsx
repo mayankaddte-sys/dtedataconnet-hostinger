@@ -3,7 +3,7 @@
    - GroupInput : a block of fields repeated once per trade / batch, each block can hold
                   its own table (e.g. Trade 1 -> its trainees, Trade 2 -> its trainees ...) */
 import React, { useRef, useState } from 'react';
-import { CustomFieldDefinition, FieldSubmissionData, TableRowData, UploadedFile } from '../../types/portal';
+import { CustomFieldDefinition, FieldSubmissionData, TableColumnConfig, TableRowData, UploadedFile } from '../../types/portal';
 import { acceptAttr, allowedKinds, checkFile, filesOf, fmtBytes, FILE_KINDS, maxBytesOf, maxFilesOf } from '../../utils/fileFields';
 import { linkedRowCount, columnTotal, sourceRowsFor, MAX_GRID_ROWS } from '../../utils/fieldValue';
 
@@ -128,6 +128,68 @@ export const FileInput: React.FC<{
   );
 };
 
+/* ---------------- small upload button inside a table cell ---------------- */
+const CellFileInput: React.FC<{
+  column: TableColumnConfig;
+  value: unknown;
+  onChange: (files: UploadedFile[]) => void;
+  disabled?: boolean;
+}> = ({ column, value, onChange, disabled }) => {
+  const pseudo: CustomFieldDefinition = {
+    id: column.id, label: column.label, type: 'file', required: !!column.required,
+    fileTypes: column.fileTypes, maxFiles: column.maxFiles || 1, maxFileSizeMB: column.maxFileSizeMB || 1
+  };
+  const files = filesOf(value);
+  const max = maxFilesOf(pseudo);
+  const ref = useRef<HTMLInputElement>(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const add = async (list: FileList | null) => {
+    const picked = Array.from(list || []);
+    if (picked.length === 0) return;
+    setErr('');
+    const ok: File[] = [];
+    for (const f of picked) {
+      const e = checkFile(pseudo, f);
+      if (e) { setErr(e); continue; }
+      if (files.length + ok.length >= max) { setErr(`अधिकतम ${max} फ़ाइल।`); continue; }
+      ok.push(f);
+    }
+    if (ok.length === 0) return;
+    setBusy(true);
+    try {
+      const read: UploadedFile[] = [];
+      for (const f of ok)
+        read.push({ id: `file_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, name: f.name, size: f.size, type: f.type, dataUrl: await readAsDataUrl(f) });
+      onChange([...files, ...read]);
+    } catch {
+      setErr('फ़ाइल पढ़ी नहीं जा सकी।');
+    } finally {
+      setBusy(false);
+      if (ref.current) ref.current.value = '';
+    }
+  };
+
+  return (
+    <div className="space-y-1 min-w-[130px]">
+      <input ref={ref} type="file" className="hidden" accept={acceptAttr(pseudo)} multiple={max > 1} disabled={disabled || files.length >= max} onChange={e => add(e.target.files)} />
+      {files.map((f, i) => (
+        <div key={i} className="flex items-center gap-1.5 text-[11px]">
+          <a href={f.dataUrl} download={f.name} title={f.name} className="text-indigo-700 underline font-bold truncate max-w-[110px]">{f.name}</a>
+          <button type="button" disabled={disabled} onClick={() => onChange(files.filter((_, k) => k !== i))} className="text-rose-600 font-bold">✕</button>
+        </div>
+      ))}
+      {files.length < max && (
+        <button type="button" disabled={disabled || busy} onClick={() => ref.current?.click()} className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded text-[11px] font-bold disabled:opacity-50">
+          {busy ? '...' : '📎 NOC जोड़ें'}
+        </button>
+      )}
+      {err && <div className="text-[10px] text-rose-700 leading-tight">{err}</div>}
+    </div>
+  );
+};
+
 /* ---------------- institute list: division -> district -> ready rows ---------------- */
 const SourceGridInput: React.FC<{
   field: CustomFieldDefinition;
@@ -147,7 +209,7 @@ const SourceGridInput: React.FC<{
   const activeDistrict = districts.includes(district) ? district : '';
   const shown = all.filter(r => activeDistrict === '__all' || !districtCol || String(r[districtCol.id]) === activeDistrict);
   const editable = cols.filter(c => !c.readOnly && !c.sourceKey);
-  const isFilled = (r: TableRowData) => editable.some(c => String(r[c.id] ?? '').trim() !== '');
+  const isFilled = (r: TableRowData) => editable.some(c => (c.type === 'file' ? filesOf(r[c.id]).length > 0 : String(r[c.id] ?? '').trim() !== ''));
   const filledCount = all.filter(isFilled).length;
 
   const setCell = (regno: string, colId: string, v: string | number) => {
@@ -192,7 +254,7 @@ const SourceGridInput: React.FC<{
         </div>
       ) : (
         <div className="overflow-x-auto border border-slate-200 rounded-lg">
-          <table className="w-full text-xs border-collapse min-w-[640px]">
+          <table className="w-full text-xs border-collapse min-w-[1000px]">
             <thead className="bg-slate-100 text-slate-700">
               <tr>
                 <th className="p-2 text-left w-10">क्र.</th>
@@ -214,12 +276,14 @@ const SourceGridInput: React.FC<{
                       <td key={c.id} className="p-1.5 align-top">
                         {c.readOnly || c.sourceKey ? (
                           <span className="text-slate-900">{String(row[c.id] ?? '')}</span>
+                        ) : c.type === 'file' ? (
+                          <CellFileInput column={c} value={row[c.id]} disabled={disabled} onChange={files => setCell(regno, c.id, files as unknown as string)} />
                         ) : c.type === 'select' ? (
                           <select
                             disabled={disabled}
                             value={String(row[c.id] ?? '')}
                             onChange={e => setCell(regno, c.id, e.target.value)}
-                            className={cell}
+                            className={`${cell} min-w-[120px]`}
                           >
                             <option value="">-- चुनें --</option>
                             {(c.options || []).map(o => (
@@ -233,7 +297,7 @@ const SourceGridInput: React.FC<{
                             disabled={disabled}
                             value={String(row[c.id] ?? '')}
                             onChange={e => setCell(regno, c.id, c.type === 'number' && e.target.value !== '' ? Number(e.target.value) : e.target.value)}
-                            className={`${cell} min-w-[110px]`}
+                            className={`${cell} min-w-[150px]`}
                           />
                         )}
                       </td>
@@ -317,13 +381,15 @@ export const GridInput: React.FC<{
                   <td className="p-2 text-slate-500">{ri + 1}</td>
                   {cols.map(c => (
                     <td key={c.id} className="p-1.5">
-                      {c.type === 'select' ? (
+                      {c.type === 'file' ? (
+                        <CellFileInput column={c} value={row[c.id]} disabled={disabled} onChange={files => setCell(ri, c.id, files as unknown as string)} />
+                      ) : c.type === 'select' ? (
                         <select
                           disabled={disabled}
                           value={String(row[c.id] ?? '')}
                           onChange={e => setCell(ri, c.id, e.target.value)}
                           required={!!c.required}
-                          className={cell}
+                          className={`${cell} min-w-[120px]`}
                         >
                           <option value="">-- चुनें --</option>
                           {(c.options || []).map(o => (
