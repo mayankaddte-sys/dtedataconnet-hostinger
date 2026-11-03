@@ -55,6 +55,7 @@ import { ChangePasswordModal } from './components/auth/ChangePasswordModal';
 import { AutoEmailMonitorModal } from './components/modals/AutoEmailMonitorModal';
 import { ReminderDispatchSuccessModal } from './components/modals/ReminderDispatchSuccessModal';
 import { getEffectiveDeadline, dedupeSubmissions } from './utils/demandStats';
+import { checkArchiveEligibility } from './utils/archiveRules';
 import { runAutomaticEmailReminderCycle, dispatchManualEmailReminder, dispatchNewRequisitionEmails, dispatchRequisitionAmendmentEmails, EmailDispatchLog } from './lib/emailReminderEngine';
 
 export default function App() {
@@ -294,6 +295,53 @@ export default function App() {
       console.error('Failed to save requisition to backend', e);
       window.alert(`डेटा मांग सुरक्षित नहीं हो सकी।\n\n${e?.message || 'कृपया पुनः प्रयास करें।'}`);
     }
+  };
+
+  // Move old, fully-complied demands to the archive (or bring them back).
+  // Allowed for the owning desk and the Directorate admin. Returns how many were changed.
+  const handleArchiveRequisitions = async (ids: string[], archive: boolean, minDays = 0): Promise<number> => {
+    const picked = requisitions.filter(r => ids.includes(r.id));
+    const mayChange = (r: Requisition) =>
+      currentUser?.role === 'DIRECTORATE_ADMIN' ||
+      (currentUser?.role === 'DIRECTORATE_DESK' && currentUser.deskId === r.deskId);
+    const allowed = picked.filter(mayChange);
+    if (allowed.length < picked.length) {
+      window.alert('केवल संबंधित डेस्क अथवा निदेशालय प्रशासक ही मांग को संग्रह में भेज या वापस ला सकते हैं।');
+    }
+
+    const changed = new Map<string, Requisition>();
+    const skipped: string[] = [];
+    for (const r of allowed) {
+      if (archive) {
+        const chk = checkArchiveEligibility(r, submissions, minDays);
+        if (!chk.eligible) {
+          skipped.push(`${r.requisitionNumber}: ${chk.reasons.join(' ')}`);
+          continue;
+        }
+      }
+      const entry = {
+        id: `edit_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+        at: new Date().toISOString(),
+        byName: currentUser?.displayName || 'Directorate',
+        summary: [archive ? 'मांग संग्रह (Archive) में भेजी गई' : 'मांग संग्रह से वापस सक्रिय की गई']
+      };
+      const updated: Requisition = {
+        ...r,
+        status: archive ? 'ARCHIVED' : 'ACTIVE',
+        editLog: [...(r.editLog || []), entry]
+      };
+      try {
+        await upsertRequisition(updated);
+        changed.set(r.id, updated);
+      } catch (e) {
+        console.error('Archive update failed', e);
+        skipped.push(`${r.requisitionNumber}: सुरक्षित नहीं हो सकी।`);
+      }
+    }
+
+    if (changed.size > 0) setRequisitions(prev => prev.map(r => changed.get(r.id) ?? r));
+    if (skipped.length > 0) window.alert(`ये मांगें नहीं बदली गईं:\n\n${skipped.join('\n')}`);
+    return changed.size;
   };
 
   // Desk amends an already-issued demand (letters / fields / sheets & forms /
@@ -941,6 +989,12 @@ export default function App() {
                 ? handleEditRequisition
                 : undefined
             }
+            onArchiveRequisition={
+              currentUser.role === 'DIRECTORATE_ADMIN' ||
+              (currentUser.role === 'DIRECTORATE_DESK' && currentUser.deskId === selectedRequisition.deskId)
+                ? handleArchiveRequisitions
+                : undefined
+            }
             editorName={currentUser.displayName}
           />
         ) : (
@@ -982,6 +1036,12 @@ export default function App() {
                     onSelectRequisition={setSelectedRequisition}
                     onCreateRequisition={() => setIsCreateReqModalOpen(true)}
                     onRespondExtension={handleRespondExtension}
+                    onArchiveRequisitions={
+                      currentUser.role === 'DIRECTORATE_ADMIN' ||
+                      (currentUser.role === 'DIRECTORATE_DESK' && currentUser.deskId === currentDesk.id)
+                        ? handleArchiveRequisitions
+                        : undefined
+                    }
                   />
                 )}
 
