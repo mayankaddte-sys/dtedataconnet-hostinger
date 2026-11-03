@@ -126,6 +126,9 @@ export const FieldDashboard: React.FC<FieldDashboardProps> = ({
 
     if (!matchesSearch) return false;
 
+    // archived (old, fully complied) demands stay visible only under "Submitted" as history
+    if (req.status === 'ARCHIVED' && activeTab !== 'SUBMITTED') return false;
+
     if (activeTab === 'PENDING') {
       return !sub || sub.status === 'REVISION_REQUESTED';
     }
