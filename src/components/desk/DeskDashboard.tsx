@@ -9,6 +9,7 @@ import {
 } from '../../types/portal';
 import { receivedFromTargets } from '../../utils/demandStats';
 import { downloadCompiledPendencyCSV } from '../../utils/compiledPendency';
+import { checkArchiveEligibility } from '../../utils/archiveRules';
 import { PriorityBadge } from '../common/PriorityBadge';
 import { CountdownTimer } from '../common/CountdownTimer';
 import { formatDateTime } from '../../utils/dateUtils';
@@ -30,7 +31,8 @@ import {
   Check,
   X,
   FileSpreadsheet,
-  Download
+  Download,
+  Archive
 } from 'lucide-react';
 
 interface DeskDashboardProps {
@@ -42,6 +44,8 @@ interface DeskDashboardProps {
   onSelectRequisition: (req: Requisition) => void;
   onCreateRequisition: () => void;
   onRespondExtension: (extensionId: string, status: 'APPROVED' | 'REJECTED', comments: string) => void;
+  /** move old, fully-complied demands to the archive / bring them back (owning desk or admin only) */
+  onArchiveRequisitions?: (ids: string[], archive: boolean, minDays?: number) => Promise<number>;
 }
 
 export const DeskDashboard: React.FC<DeskDashboardProps> = ({
@@ -52,17 +56,33 @@ export const DeskDashboard: React.FC<DeskDashboardProps> = ({
   fieldUnits,
   onSelectRequisition,
   onCreateRequisition,
-  onRespondExtension
+  onRespondExtension,
+  onArchiveRequisitions
 }) => {
   const [priorityFilter, setPriorityFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [extensionComment, setExtensionComment] = useState<string>('24 hours extension approved');
 
-  // Requisitions belonging to this desk
-  const deskRequisitions = requisitions.filter(r => r.deskId === desk.id);
+  // Requisitions belonging to this desk. Archived ones are kept out of the live list and the statistics.
+  const allDeskRequisitions = requisitions.filter(r => r.deskId === desk.id);
+  const deskRequisitions = allDeskRequisitions.filter(r => r.status !== 'ARCHIVED');
+  const archivedRequisitions = allDeskRequisitions.filter(r => r.status === 'ARCHIVED');
+
+  // Archive: which list is shown, and which demands are ready to be archived
+  const [listView, setListView] = useState<'ACTIVE' | 'ARCHIVED'>('ACTIVE');
+  const [minAgeDays, setMinAgeDays] = useState<number>(0);
+  const [readyOpen, setReadyOpen] = useState<boolean>(false);
+  const [archivePicked, setArchivePicked] = useState<Set<string>>(new Set());
+  const [archiving, setArchiving] = useState<boolean>(false);
+  const readyToArchive = onArchiveRequisitions
+    ? deskRequisitions
+        .map(r => ({ r, chk: checkArchiveEligibility(r, submissions, minAgeDays) }))
+        .filter(x => x.chk.eligible)
+        .sort((a, b) => b.chk.daysSinceDeadline - a.chk.daysSinceDeadline)
+    : [];
 
   // Filtered by priority and search
-  const filteredRequisitions = deskRequisitions.filter(r => {
+  const filteredRequisitions = (listView === 'ARCHIVED' ? archivedRequisitions : deskRequisitions).filter(r => {
     const matchesPriority = priorityFilter === 'ALL' || r.priority === priorityFilter;
     const matchesSearch = r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           r.requisitionNumber.toLowerCase().includes(searchQuery.toLowerCase());
@@ -250,10 +270,122 @@ export const DeskDashboard: React.FC<DeskDashboardProps> = ({
       )}
 
       {/* Main Requisitions Section */}
+      {/* Old demands with 100% compliance, ready to be moved to the archive */}
+      {onArchiveRequisitions && listView === 'ACTIVE' && readyToArchive.length > 0 && (
+        <div className="bg-amber-50/70 border border-amber-200 rounded-xl overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setReadyOpen(v => !v)}
+            className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left"
+          >
+            <span className="flex items-center gap-2 text-xs font-bold text-amber-900">
+              <Archive className="w-4 h-4" />
+              संग्रह में भेजने योग्य मांगें: {readyToArchive.length} (अंतिम तिथि बीत चुकी और 100% अनुपालन)
+            </span>
+            <span className="text-[11px] font-bold text-amber-800 underline">{readyOpen ? 'छिपाएँ' : 'देखें'}</span>
+          </button>
+
+          {readyOpen && (
+            <div className="px-4 pb-4 space-y-3 border-t border-amber-200">
+              <div className="flex flex-wrap items-center gap-3 pt-3 text-[11px]">
+                <label className="flex items-center gap-1.5 font-medium text-slate-700">
+                  कम से कम
+                  <select
+                    value={minAgeDays}
+                    onChange={e => { setMinAgeDays(Number(e.target.value)); setArchivePicked(new Set()); }}
+                    className="px-2 py-1 border border-slate-300 rounded bg-white"
+                  >
+                    <option value={0}>अंतिम तिथि बीत चुकी</option>
+                    <option value={7}>7 दिन पुरानी</option>
+                    <option value={30}>30 दिन पुरानी</option>
+                    <option value={90}>90 दिन पुरानी</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setArchivePicked(new Set(readyToArchive.map(x => x.r.id)))}
+                  className="px-2 py-1 bg-white border border-slate-300 rounded font-bold hover:bg-slate-50"
+                >
+                  सभी चुनें
+                </button>
+                <button
+                  type="button"
+                  disabled={archivePicked.size === 0}
+                  onClick={() => setArchivePicked(new Set())}
+                  className="px-2 py-1 bg-white border border-slate-300 rounded font-bold hover:bg-slate-50 disabled:opacity-40"
+                >
+                  चयन हटाएँ
+                </button>
+              </div>
+
+              <div className="max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
+                {readyToArchive.map(({ r, chk }) => (
+                  <label key={r.id} className="flex items-start gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={archivePicked.has(r.id)}
+                      onChange={() =>
+                        setArchivePicked(prev => {
+                          const n = new Set(prev);
+                          if (n.has(r.id)) n.delete(r.id);
+                          else n.add(r.id);
+                          return n;
+                        })
+                      }
+                    />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-900 line-clamp-1">{r.title}</div>
+                      <div className="text-[11px] text-slate-500 font-mono">
+                        {r.requisitionNumber} · {chk.completeCount}/{chk.targetCount} इकाइयाँ · अंतिम तिथि को {Math.max(0, chk.daysSinceDeadline)} दिन बीते
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                disabled={archivePicked.size === 0 || archiving}
+                onClick={async () => {
+                  if (!window.confirm(`चुनी हुई ${archivePicked.size} मांगें संग्रह में भेजें?\n\nडेटा सुरक्षित रहेगा और आप इन्हें संग्रहीत सूची से वापस ला सकते हैं।`)) return;
+                  setArchiving(true);
+                  try {
+                    await onArchiveRequisitions(Array.from(archivePicked), true, minAgeDays);
+                    setArchivePicked(new Set());
+                  } finally {
+                    setArchiving(false);
+                  }
+                }}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Archive className="w-3.5 h-3.5" />
+                <span>{archiving ? 'संग्रह में भेजा जा रहा है...' : `चुनी हुई ${archivePicked.size} मांगें संग्रह में भेजें`}</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         
         {/* Table & Filter Header */}
         <div className="p-4 border-b border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row items-center justify-between gap-3">
+
+          <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 text-xs shrink-0">
+            <button
+              onClick={() => setListView('ACTIVE')}
+              className={`px-3 py-1 rounded font-bold transition-colors ${listView === 'ACTIVE' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            >
+              सक्रिय ({deskRequisitions.length})
+            </button>
+            <button
+              onClick={() => setListView('ARCHIVED')}
+              className={`px-3 py-1 rounded font-bold transition-colors flex items-center gap-1 ${listView === 'ARCHIVED' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            >
+              <Archive className="w-3 h-3" /> संग्रहीत ({archivedRequisitions.length})
+            </button>
+          </div>
           
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <span className="text-xs font-bold text-slate-700 shrink-0">Priority Filter:</span>
@@ -298,13 +430,19 @@ export const DeskDashboard: React.FC<DeskDashboardProps> = ({
           {filteredRequisitions.length === 0 ? (
             <div className="py-12 text-center text-slate-500 space-y-3">
               <Inbox className="w-8 h-8 mx-auto text-slate-400" />
-              <p className="text-sm font-medium">इस श्रेणी में कोई डेटा मांग आदेश उपलब्ध नहीं है (No demand orders in this category).</p>
-              <button
-                onClick={onCreateRequisition}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors"
-              >
-                + Create First Demand Order
-              </button>
+              <p className="text-sm font-medium">
+                {listView === 'ARCHIVED'
+                  ? 'संग्रह में अभी कोई मांग नहीं है।'
+                  : 'इस श्रेणी में कोई डेटा मांग आदेश उपलब्ध नहीं है (No demand orders in this category).'}
+              </p>
+              {listView === 'ACTIVE' && (
+                <button
+                  onClick={onCreateRequisition}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors"
+                >
+                  + Create First Demand Order
+                </button>
+              )}
             </div>
           ) : (
             filteredRequisitions.map((req) => {
