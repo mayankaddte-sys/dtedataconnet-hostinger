@@ -217,7 +217,7 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
     <div className="space-y-6 animate-in fade-in duration-200">
       
       {/* Top Bar with Back Button & Export */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
@@ -239,7 +239,7 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap xl:justify-end min-w-0">
           {/* Edit / amend the demand (letters, fields, sheets & forms) */}
           {onEditRequisition && (
             <button
