@@ -5,7 +5,7 @@
 import React, { useRef, useState } from 'react';
 import { CustomFieldDefinition, FieldSubmissionData, TableRowData, UploadedFile } from '../../types/portal';
 import { acceptAttr, allowedKinds, checkFile, filesOf, fmtBytes, FILE_KINDS, maxBytesOf, maxFilesOf } from '../../utils/fileFields';
-import { linkedRowCount, columnTotal, MAX_GRID_ROWS } from '../../utils/fieldValue';
+import { linkedRowCount, columnTotal, sourceRowsFor, MAX_GRID_ROWS } from '../../utils/fieldValue';
 
 const cell =
   'w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs focus:ring-2 focus:ring-indigo-400 focus:outline-hidden disabled:bg-slate-100';
@@ -128,6 +128,127 @@ export const FileInput: React.FC<{
   );
 };
 
+/* ---------------- institute list: division -> district -> ready rows ---------------- */
+const SourceGridInput: React.FC<{
+  field: CustomFieldDefinition;
+  data: FieldSubmissionData;
+  siblings: CustomFieldDefinition[];
+  onChange: (rows: TableRowData[]) => void;
+  disabled?: boolean;
+}> = ({ field, data, siblings, onChange, disabled }) => {
+  const [district, setDistrict] = useState('');
+  const cols = field.tableColumns || [];
+  const keyCol = cols.find(c => c.sourceKey === 'regno');
+  const districtCol = cols.find(c => c.sourceKey === 'district');
+  const divisionLabel = siblings.find(f => f.id === field.rowSource?.divisionFieldId)?.label || 'मंडल';
+  const division = String(data[field.rowSource!.divisionFieldId] ?? '');
+  const all = sourceRowsFor(field, data); // every institute of the chosen division
+  const districts = Array.from(new Set(all.map(r => String(districtCol ? r[districtCol.id] : '')))).filter(Boolean).sort();
+  const activeDistrict = districts.includes(district) ? district : '';
+  const shown = all.filter(r => activeDistrict === '__all' || !districtCol || String(r[districtCol.id]) === activeDistrict);
+  const editable = cols.filter(c => !c.readOnly && !c.sourceKey);
+  const isFilled = (r: TableRowData) => editable.some(c => String(r[c.id] ?? '').trim() !== '');
+  const filledCount = all.filter(isFilled).length;
+
+  const setCell = (regno: string, colId: string, v: string | number) => {
+    onChange(all.map(r => (keyCol && String(r[keyCol.id]) === regno ? { ...r, [colId]: v } : r)));
+  };
+
+  if (!division) {
+    return (
+      <div className="p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-[11px] text-slate-500">
+        पहले "{divisionLabel}" चुनें — फिर जनपद चुनने पर उसके सभी संस्थान यहाँ दिखेंगे।
+      </div>
+    );
+  }
+
+  const showAll = district === '__all';
+  const visible = showAll ? all : activeDistrict ? shown : [];
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <select
+          value={showAll ? '__all' : activeDistrict}
+          disabled={disabled}
+          onChange={e => setDistrict(e.target.value)}
+          className={`${cell} sm:w-64`}
+        >
+          <option value="">-- जनपद चुनें --</option>
+          <option value="__all">सभी जनपद ({all.length})</option>
+          {districts.map(d => (
+            <option key={d} value={d}>
+              {d} ({all.filter(r => String(districtCol ? r[districtCol.id] : '') === d).length})
+            </option>
+          ))}
+        </select>
+        <span className="text-[11px] font-bold text-indigo-700">
+          {division} मंडल: कुल {all.length} संस्थान · भरे गए {filledCount}
+        </span>
+      </div>
+
+      {visible.length === 0 ? (
+        <div className="p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-[11px] text-slate-500">
+          जनपद चुनें — उस जनपद के सभी संस्थान तालिका में दिखेंगे।
+        </div>
+      ) : (
+        <div className="overflow-x-auto border border-slate-200 rounded-lg">
+          <table className="w-full text-xs border-collapse min-w-[640px]">
+            <thead className="bg-slate-100 text-slate-700">
+              <tr>
+                <th className="p-2 text-left w-10">क्र.</th>
+                {cols.map(c => (
+                  <th key={c.id} className="p-2 text-left font-bold">
+                    {c.label}
+                    {c.required && !c.readOnly && <span className="text-red-500 ml-0.5">*</span>}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((row, ri) => {
+                const regno = String(keyCol ? row[keyCol.id] : ri);
+                return (
+                  <tr key={regno} className={`border-t border-slate-100 ${isFilled(row) ? 'bg-emerald-50/40' : ''}`}>
+                    <td className="p-2 text-slate-500">{ri + 1}</td>
+                    {cols.map(c => (
+                      <td key={c.id} className="p-1.5 align-top">
+                        {c.readOnly || c.sourceKey ? (
+                          <span className="text-slate-900">{String(row[c.id] ?? '')}</span>
+                        ) : c.type === 'select' ? (
+                          <select
+                            disabled={disabled}
+                            value={String(row[c.id] ?? '')}
+                            onChange={e => setCell(regno, c.id, e.target.value)}
+                            className={cell}
+                          >
+                            <option value="">-- चुनें --</option>
+                            {(c.options || []).map(o => (
+                              <option key={o} value={o}>{o}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type={c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : 'text'}
+                            step="any"
+                            disabled={disabled}
+                            value={String(row[c.id] ?? '')}
+                            onChange={e => setCell(regno, c.id, c.type === 'number' && e.target.value !== '' ? Number(e.target.value) : e.target.value)}
+                            className={`${cell} min-w-[110px]`}
+                          />
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ---------------- table ---------------- */
 export const GridInput: React.FC<{
   field: CustomFieldDefinition;
@@ -137,6 +258,7 @@ export const GridInput: React.FC<{
   onChange: (rows: TableRowData[]) => void;
   disabled?: boolean;
 }> = ({ field, data, siblings, onChange, disabled }) => {
+  if (field.rowSource) return <SourceGridInput field={field} data={data} siblings={siblings} onChange={onChange} disabled={disabled} />;
   const cols = field.tableColumns || [];
   const stored: TableRowData[] = Array.isArray(data[field.id]) ? (data[field.id] as TableRowData[]) : [];
   const n = linkedRowCount(field, data);
