@@ -13,6 +13,8 @@ import { formatDateTime } from '../../utils/dateUtils';
 import { exportRequisitionDataToCSV } from '../../utils/exportUtils';
 import { dispatchManualEmailReminder } from '../../lib/emailReminderEngine';
 import { getStoredSubmissionById } from '../../lib/storage';
+import { AnswerView } from './AnswerView';
+import { checkArchiveEligibility } from '../../utils/archiveRules';
 import { EditRequisitionModal, EditRequisitionSaveOptions } from './EditRequisitionModal';
 import { PendencyListModal } from './PendencyListModal';
 import { 
@@ -49,7 +51,9 @@ import {
   Pencil,
   History,
   Link2,
-  ClipboardList
+  ClipboardList,
+  Archive,
+  ArchiveRestore
 } from 'lucide-react';
 
 interface RequisitionDetailViewProps {
@@ -67,6 +71,8 @@ interface RequisitionDetailViewProps {
   onDeleteSubmission?: (submissionId: string) => void;
   // Present only for the owning desk / Directorate admin.
   onEditRequisition?: (updated: Requisition, options: EditRequisitionSaveOptions) => Promise<void> | void;
+  /** archive / restore this demand (only for the owning desk or the Directorate admin) */
+  onArchiveRequisition?: (ids: string[], archive: boolean) => Promise<number>;
   editorName?: string;
 }
 
@@ -84,6 +90,7 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
   onDeleteRequisition,
   onDeleteSubmission,
   onEditRequisition,
+  onArchiveRequisition,
   editorName
 }) => {
   const [isEditOpen, setIsEditOpen] = useState<boolean>(false);
@@ -103,6 +110,8 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
   const [previewingSignedDoc, setPreviewingSignedDoc] = useState<SubmissionRecord | null>(null);
   const [previewingAttachedOrder, setPreviewingAttachedOrder] = useState<boolean>(false);
   
+  const [archiveBusy, setArchiveBusy] = useState<boolean>(false);
+
   // ITI-wise pendency list
   const [isPendencyOpen, setIsPendencyOpen] = useState<boolean>(false);
 
@@ -255,6 +264,35 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
             </button>
           )}
 
+          {/* Archive / restore */}
+          {onArchiveRequisition && (() => {
+            const isArchived = requisition.status === 'ARCHIVED';
+            const chk = checkArchiveEligibility(requisition, reqSubmissions);
+            return (
+              <button
+                disabled={archiveBusy || (!isArchived && !chk.eligible)}
+                onClick={async () => {
+                  const msg = isArchived
+                    ? 'यह मांग संग्रह से वापस सक्रिय सूची में लाएँ?'
+                    : 'यह मांग संग्रह (Archive) में भेजें?\n\nसक्रिय सूची, अनुपालन गणना और रिमाइंडर से यह हट जाएगी। डेटा सुरक्षित रहेगा और आप इसे संग्रह से कभी भी वापस ला सकते हैं।';
+                  if (!window.confirm(msg)) return;
+                  setArchiveBusy(true);
+                  try {
+                    const n = await onArchiveRequisition([requisition.id], !isArchived);
+                    if (n > 0) onBack();
+                  } finally {
+                    setArchiveBusy(false);
+                  }
+                }}
+                title={isArchived ? 'संग्रह से वापस लाएँ' : chk.eligible ? 'पूर्ण अनुपालन वाली पुरानी मांग संग्रह में भेजें' : `संग्रह में नहीं भेजी जा सकती: ${chk.reasons.join(' ')}`}
+                className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isArchived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+                <span>{isArchived ? 'संग्रह से वापस लाएँ' : 'संग्रह में भेजें (Archive)'}</span>
+              </button>
+            );
+          })()}
+
           {/* ITI-wise pendency list */}
           <button
             onClick={() => setIsPendencyOpen(true)}
@@ -294,6 +332,13 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
           </button>
         </div>
       </div>
+
+      {requisition.status === 'ARCHIVED' && (
+        <div className="p-3 bg-slate-100 border border-slate-300 rounded-xl text-xs text-slate-700 flex items-center gap-2">
+          <Archive className="w-4 h-4 text-slate-500 shrink-0" />
+          <span>यह मांग <strong>संग्रह (Archive)</strong> में है — सक्रिय सूची, अनुपालन गणना और रिमाइंडर में शामिल नहीं। चाहें तो ऊपर से "संग्रह से वापस लाएँ" दबाएँ।</span>
+        </div>
+      )}
 
       {/* Meta & Compliance Progress Bar Card */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -791,7 +836,7 @@ export const RequisitionDetailView: React.FC<RequisitionDetailViewProps> = ({
                             {field.label} {field.unit ? `(${field.unit})` : ''}
                           </span>
                           <div className="text-sm font-bold text-slate-900 mt-1 break-words">
-                            {value !== undefined && value !== '' ? String(value) : <span className="text-slate-400 font-normal italic">Not provided</span>}
+                            <AnswerView field={field} value={value} />
                           </div>
                         </div>
                       );
