@@ -125,6 +125,18 @@ export interface TableColumnConfig {
   required?: boolean;
   /** number columns: show the column's sum in a "कुल" row under the table */
   showTotal?: boolean;
+  /** rowSource tables: column is filled from the master list and cannot be edited */
+  readOnly?: boolean;
+  /** rowSource tables: which master-list value fills this column (division / district / regno / name / category / type / signatory) */
+  sourceKey?: string;
+}
+
+/** one line of a master list (e.g. one institute) that a rowSource table is built from */
+export interface SourceRow {
+  division: string;
+  district: string;
+  regno: string;
+  [key: string]: string | undefined;
 }
 
 export interface CustomFieldDefinition {
@@ -141,6 +153,9 @@ export interface CustomFieldDefinition {
   tableColumns?: TableColumnConfig[];
   /** table_grid only: id of a dropdown/number field whose answer sets how many rows to show */
   rowsFromFieldId?: string;
+  /** table_grid only: rows come from a master list. The unit picks a division (in the field named by
+      divisionFieldId) and then a district, and every institute of that district is shown as a ready row. */
+  rowSource?: { divisionFieldId: string; rows: SourceRow[] };
   /** table_grid / repeat_group: upper limit on rows / blocks */
   maxRows?: number;
   /** repeat_group only: the fields filled inside every block (text / number / date / select / table_grid) */
